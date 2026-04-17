@@ -1,0 +1,18 @@
+---
+description: Add compact end-of-response review notes after implementation work
+alwaysApply: true
+---
+
+For this project, whenever you make code changes or modify files, end the response with:
+
+Review notes
+- Changed: <very short summary>
+- Check: <main thing to verify, or "none">
+- Next: <best next action>
+
+Rules:
+- Keep each line short.
+- Do not exceed 3 bullets.
+- Do not add this section when no files/code were changed.
+- Do not add unnecessary explanation before or after it.
+- Prefer concrete file names when useful.

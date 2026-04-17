@@ -1,0 +1,14 @@
+---
+description: Require brief plan before large edits
+alwaysApply: true
+---
+
+Before making large or multi-file changes, first provide:
+- Plan
+- Files to change
+- Risk
+
+Keep it very short.
+
+Exception:
+- If the request is a small edit confined to one file, proceed directly.
