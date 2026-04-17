@@ -124,6 +124,12 @@ final class GameScene: SKScene {
     private var jumpBufferTimer: CGFloat = 0
     private let jumpBufferSeconds: CGFloat = 0.14
 
+    /// Uniform scale from ride art (`applyRideVisual`); squash/stretch juice multiplies this.
+    private var playerUniformBaseScale: CGFloat = 1
+
+    /// Tracks leaving the ground so we can fire a one-shot landing squash.
+    private var jumpJuiceWasInAir = false
+
     func bind(
         lion: Binding<Int>,
         elephant: Binding<Int>,
@@ -165,6 +171,90 @@ final class GameScene: SKScene {
         return SKAction.follow(path, asOffset: false, orientToPath: false, duration: duration)
     }
 
+    // MARK: - Juice (visual-only)
+
+    private func applyJumpJuice() {
+        let b = playerUniformBaseScale
+        playerRoot.removeAction(forKey: "jumpJuice")
+        let squash = SKAction.group([
+            SKAction.scaleX(to: b * 1.08, duration: 0.05),
+            SKAction.scaleY(to: b * 0.92, duration: 0.05),
+        ])
+        squash.timingMode = .easeInEaseOut
+        let stretch = SKAction.group([
+            SKAction.scaleX(to: b * 0.96, duration: 0.07),
+            SKAction.scaleY(to: b * 1.09, duration: 0.07),
+        ])
+        stretch.timingMode = .easeOut
+        let restore = SKAction.group([
+            SKAction.scaleX(to: b, duration: 0.09),
+            SKAction.scaleY(to: b, duration: 0.09),
+        ])
+        restore.timingMode = .easeOut
+        playerRoot.run(SKAction.sequence([squash, stretch, restore]), withKey: "jumpJuice")
+    }
+
+    private func applyLandJuice() {
+        let b = playerUniformBaseScale
+        playerRoot.removeAction(forKey: "landJuice")
+        let squash = SKAction.group([
+            SKAction.scaleX(to: b * 1.1, duration: 0.07),
+            SKAction.scaleY(to: b * 0.86, duration: 0.07),
+        ])
+        squash.timingMode = .easeOut
+        let restore = SKAction.group([
+            SKAction.scaleX(to: b, duration: 0.09),
+            SKAction.scaleY(to: b, duration: 0.09),
+        ])
+        restore.timingMode = .easeOut
+        playerRoot.run(SKAction.sequence([squash, restore]), withKey: "landJuice")
+    }
+
+    private func restorePlayerUniformScale() {
+        let b = playerUniformBaseScale
+        playerRoot.xScale = b
+        playerRoot.yScale = b
+    }
+
+    private func playHitShake() {
+        func makeShake() -> SKAction {
+            let t: TimeInterval = 0.021
+            return SKAction.sequence([
+                SKAction.moveBy(x: 5, y: 0, duration: t),
+                SKAction.moveBy(x: -9, y: 0, duration: t),
+                SKAction.moveBy(x: 6, y: 0, duration: t),
+                SKAction.moveBy(x: -2, y: 0, duration: t),
+            ])
+        }
+        playerRoot.removeAction(forKey: "hitShake")
+        itemsLayer.removeAction(forKey: "hitShake")
+        playerRoot.run(makeShake(), withKey: "hitShake")
+        itemsLayer.run(makeShake(), withKey: "hitShake")
+    }
+
+    private func playAnimalPickupSparkle(at position: CGPoint) {
+        let colors: [SKColor] = [
+            SKColor(red: 1.0, green: 0.95, blue: 0.45, alpha: 1),
+            SKColor(red: 1.0, green: 0.65, blue: 0.8, alpha: 1),
+            SKColor(red: 0.55, green: 0.95, blue: 0.75, alpha: 1),
+        ]
+        for i in 0..<7 {
+            let dot = SKShapeNode(circleOfRadius: CGFloat.random(in: 2.5...5))
+            dot.fillColor = colors[i % colors.count]
+            dot.strokeColor = SKColor(white: 1, alpha: 0.25)
+            dot.lineWidth = 1
+            dot.position = position
+            dot.zPosition = 480
+            addChild(dot)
+            let ox = CGFloat.random(in: -28...28)
+            let oy = CGFloat.random(in: 12...38)
+            let move = SKAction.moveBy(x: ox, y: oy, duration: 0.24)
+            move.timingMode = .easeOut
+            let fade = SKAction.fadeOut(withDuration: 0.24)
+            dot.run(.sequence([.group([move, fade]), .removeFromParent()]))
+        }
+    }
+
     private func animalKind(from animal: SKNode) -> AnimalKind? {
         if let raw = animal.userData?["kind"] as? Int, let k = AnimalKind(rawValue: raw) {
             return k
@@ -183,6 +273,8 @@ final class GameScene: SKScene {
 
     /// Visual-only; `currentRide` lives in SwiftUI — call this when the binding changes.
     func applyRideVisual(_ ride: RideType) {
+        playerRoot.removeAction(forKey: "jumpJuice")
+        playerRoot.removeAction(forKey: "landJuice")
         let name = resolvedAssetName(for: ride)
         playerRoot.texture = SKTexture(imageNamed: name)
         let th = targetHeight(for: ride)
@@ -192,6 +284,7 @@ final class GameScene: SKScene {
         } else {
             playerRoot.setScale(0.32)
         }
+        playerUniformBaseScale = playerRoot.xScale
     }
 
     override func didMove(to view: SKView) {
@@ -212,6 +305,8 @@ final class GameScene: SKScene {
         velocityY = 0
         coyoteTimer = 0
         jumpBufferTimer = 0
+        jumpJuiceWasInAir = false
+        playerUniformBaseScale = 1
 
         buildSky()
         buildGround()
@@ -308,8 +403,8 @@ final class GameScene: SKScene {
             playerRoot.position.y += velocityY * step
             playerRoot.position.y = max(playerRoot.position.y, groundHeight - 8)
 
-            let wobble = sin(stumbleElapsed * 24) * 0.12
-            playerRoot.zRotation = CGFloat(-0.9 + wobble)
+            let wobble = sin(stumbleElapsed * 24) * 0.18
+            playerRoot.zRotation = CGFloat(-1.18 + wobble)
 
             if stumbleElapsed >= 0.4 {
                 endStumble()
@@ -330,15 +425,26 @@ final class GameScene: SKScene {
         }
 
         let grounded = isGrounded()
+
+        if grounded, jumpJuiceWasInAir, velocityY <= 10 {
+            applyLandJuice()
+            jumpJuiceWasInAir = false
+        }
+
         if grounded {
             coyoteTimer = coyoteSeconds
             if jumpBufferTimer > 0 {
                 velocityY = jumpImpulse
                 jumpBufferTimer = 0
+                applyJumpJuice()
             }
         } else {
             coyoteTimer = max(0, coyoteTimer - step)
             jumpBufferTimer = max(0, jumpBufferTimer - step)
+        }
+
+        if !grounded {
+            jumpJuiceWasInAir = true
         }
 
         for child in itemsLayer.children {
@@ -369,6 +475,7 @@ final class GameScene: SKScene {
         velocityY = 0
         playerRoot.position.y = groundHeight
         playerRoot.zRotation = 0
+        restorePlayerUniformScale()
         coyoteTimer = coyoteSeconds
         jumpBufferTimer = 0
         invulnerableUntil = sceneTime + 2.85
@@ -432,6 +539,10 @@ final class GameScene: SKScene {
         velocityY = -280
         coyoteTimer = 0
         jumpBufferTimer = 0
+        playerRoot.removeAction(forKey: "jumpJuice")
+        playerRoot.removeAction(forKey: "landJuice")
+        restorePlayerUniformScale()
+        playHitShake()
     }
 
     private func tryJump() {
@@ -440,6 +551,7 @@ final class GameScene: SKScene {
             velocityY = jumpImpulse
             coyoteTimer = 0
             jumpBufferTimer = 0
+            applyJumpJuice()
             return
         }
         jumpBufferTimer = jumpBufferSeconds
@@ -656,18 +768,24 @@ final class GameScene: SKScene {
         animal.zPosition = 500
         addChild(animal)
 
+        playAnimalPickupSparkle(at: worldStart)
+
         let dest = pursePointInScene()
         let duration: TimeInterval = 0.38
         let move = arcMoveToPurse(from: worldStart, to: dest, duration: duration)
         let shrink = SKAction.scale(to: 0.2, duration: duration)
         shrink.timingMode = .easeIn
 
+        let pop = SKAction.scale(to: 1.14, duration: 0.06)
+        pop.timingMode = .easeOut
+        let flight = SKAction.group([move, shrink])
+
         let done = SKAction.run { [weak self] in
             animal.removeFromParent()
             self?.registerCollect(kind: kind)
         }
 
-        animal.run(SKAction.sequence([SKAction.group([move, shrink]), done]))
+        animal.run(SKAction.sequence([pop, flight, done]))
     }
 
     private func playHappyCollect(at position: CGPoint) {
@@ -677,7 +795,7 @@ final class GameScene: SKScene {
             SKColor(red: 0.45, green: 0.95, blue: 0.58, alpha: 1),
             SKColor(red: 0.55, green: 0.85, blue: 1.0, alpha: 1),
         ]
-        for i in 0..<9 {
+        for i in 0..<12 {
             let dot = SKShapeNode(circleOfRadius: CGFloat.random(in: 3.5...7))
             dot.fillColor = colors[i % colors.count]
             dot.strokeColor = SKColor(white: 1, alpha: 0.35)
