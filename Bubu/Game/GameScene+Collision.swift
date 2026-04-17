@@ -61,7 +61,7 @@ extension GameScene {
         for (i, k) in droppedKinds.prefix(visualCap).enumerated() {
             spawnDroppedAnimalFall(dropped: k, slot: i)
         }
-        requestRunOverIfNeeded()
+        onPlayerHit?()
         isStumbling = true
         stumbleElapsed = 0
         velocityY = -280

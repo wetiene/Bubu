@@ -114,18 +114,20 @@ final class GameScene: SKScene {
     let itemsLayer = SKNode()
     var playerRoot: SKSpriteNode!
 
-    let baseScrollSpeed: CGFloat = 74
+    let baseScrollSpeed: CGFloat = 84
     let gravity: CGFloat = -1060
     let firstJumpImpulse: CGFloat = 700
     let secondJumpImpulse: CGFloat = 620
     let maxJumpCount = 2
 
-    let speedStepPerAnimal: CGFloat = 1.05
-    let maxScrollSpeed: CGFloat = 118
+    let speedStepPerAnimal: CGFloat = 10.00
+    let maxScrollSpeed: CGFloat = 300
     var peakCollectedThisRun = 0
 
     var onPurseShakeRequested: (() -> Void)?
     var onRunOverRequested: ((Int) -> Void)?
+    var onPlayerHit: (() -> Void)?
+    var onGroundTopChanged: ((CGFloat) -> Void)?
 
     let skyScrollMultiplier: CGFloat = 0.16
     var skyTile0: SKSpriteNode?

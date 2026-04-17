@@ -10,6 +10,11 @@ import UIKit
 extension GameScene {
     // MARK: - Scene setup
 
+    /// Reports ground top in SwiftUI/top-origin view coordinates.
+    func publishGroundTopChanged() {
+        onGroundTopChanged?(size.height - groundHeight)
+    }
+
     /// Visual-only; `currentRide` lives in SwiftUI — call this when the binding changes.
     func applyRideVisual(_ ride: RideType) {
         playerRoot.removeAction(forKey: "jumpJuice")
@@ -62,6 +67,8 @@ extension GameScene {
         playerRoot.zRotation = 0
         addChild(playerRoot)
 
+        publishGroundTopChanged()
+
         timeToNextObstacle = Double.random(in: 7.2...10.0)
         timeToNextAnimal = Double.random(in: 3.4...5.2)
     }
@@ -69,6 +76,7 @@ extension GameScene {
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         relayoutSkyTilesIfPresent()
+        publishGroundTopChanged()
     }
 
     // MARK: - World
