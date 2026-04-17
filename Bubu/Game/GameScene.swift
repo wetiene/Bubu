@@ -83,6 +83,9 @@ final class GameScene: SKScene {
     /// Mirrored from SwiftUI when purse overlay is open — pauses SKView from outside.
     private(set) var gameplayPausedFromUI = false
 
+    /// When set, collect animations aim at this scene point (SwiftUI-measured purse center).
+    private var purseDestinationFromUI: CGPoint?
+
     private var sceneTime: TimeInterval = 0
 
     private var isStumbling = false
@@ -97,9 +100,9 @@ final class GameScene: SKScene {
     private var playerRoot: SKSpriteNode!
 
     // Tweak: overall difficulty / feel
-    private let scrollSpeed: CGFloat = 86
-    private let gravity: CGFloat = -1100
-    private let jumpImpulse: CGFloat = 1040
+    private let scrollSpeed: CGFloat = 74
+    private let gravity: CGFloat = -1060
+    private let jumpImpulse: CGFloat = 1090
 
     /// Horizontal gap between obstacle/animal spawn centers (reduces tap vs jump conflicts).
     private let minSpawnSeparationX: CGFloat = 310
@@ -132,12 +135,24 @@ final class GameScene: SKScene {
     }
 
     func syncGameplayPaused(_ paused: Bool) {
+        // While SKView.isPaused is true, `update` is not called, so `lastUpdateTime` stays stale.
+        // On resume, `dt` would equal the whole pause and one physics step snaps Bubu (e.g. to ground).
+        if gameplayPausedFromUI, !paused {
+            lastUpdateTime = 0
+        }
         gameplayPausedFromUI = paused
     }
 
-    /// Top-left purse hotspot in scene coords (matches SwiftUI: leading 16 + half 56, top 12 + half 56).
+    func setPurseCollectDestination(_ point: CGPoint?) {
+        purseDestinationFromUI = point
+    }
+
+    /// Top-left purse hotspot in scene coords (SwiftUI target when known; else layout fallback).
     private func pursePointInScene() -> CGPoint {
-        CGPoint(x: 44, y: size.height - 40)
+        if let p = purseDestinationFromUI {
+            return p
+        }
+        return CGPoint(x: 44, y: size.height - 40)
     }
 
     private func arcMoveToPurse(from start: CGPoint, to end: CGPoint, duration: TimeInterval) -> SKAction {

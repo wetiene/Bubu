@@ -12,6 +12,8 @@ struct GameView: View {
     @State private var elephantCount = 0
     @State private var giraffeCount = 0
     @State private var purseOverlayOpen = false
+    /// Purse center in SpriteKit scene space; measured from SwiftUI layout.
+    @State private var purseSceneTarget: CGPoint?
 
     private var totalCollected: Int {
         lionCount + elephantCount + giraffeCount
@@ -30,7 +32,8 @@ struct GameView: View {
                     lionCount: $lionCount,
                     elephantCount: $elephantCount,
                     giraffeCount: $giraffeCount,
-                    gameplayPaused: $purseOverlayOpen
+                    gameplayPaused: $purseOverlayOpen,
+                    purseCollectTargetInScene: purseSceneTarget
                 )
                 .ignoresSafeArea()
 
@@ -53,11 +56,28 @@ struct GameView: View {
                                 .background(Capsule().fill(Color.red.opacity(0.9)))
                                 .offset(x: 10, y: -6)
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 12)
                     .padding(.leading, 16)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: PurseButtonFramePreferenceKey.self,
+                                value: proxy.frame(in: .named("playSpace"))
+                            )
+                        }
+                    }
                 }
+            }
+            .coordinateSpace(name: "playSpace")
+            .onPreferenceChange(PurseButtonFramePreferenceKey.self) { frame in
+                guard frame.size.width > 0.5, frame.size.height > 0.5 else { return }
+                purseSceneTarget = CGPoint(
+                    x: frame.midX,
+                    y: geo.size.height - frame.midY
+                )
             }
             .overlay(alignment: .topTrailing) {
                 if !purseOverlayOpen {
@@ -74,6 +94,7 @@ struct GameView: View {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .fill(Color(red: 0.12, green: 0.14, blue: 0.2))
                             )
+                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 12)
@@ -114,15 +135,16 @@ struct GameView: View {
                 Button {
                     purseOverlayOpen = false
                 } label: {
-                    Text("Close")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                    Text("Back")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, 18)
                         .background(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(Color(red: 0.2, green: 0.55, blue: 0.95))
                         )
+                        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -146,6 +168,17 @@ struct GameView: View {
 
 // MARK: - UIKit bridge
 
+private struct PurseButtonFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next.size.width > 0.5, next.size.height > 0.5 {
+            value = next
+        }
+    }
+}
+
 private struct GameSKBridge: UIViewRepresentable {
     let size: CGSize
     @Binding var currentRide: RideType
@@ -153,6 +186,7 @@ private struct GameSKBridge: UIViewRepresentable {
     @Binding var elephantCount: Int
     @Binding var giraffeCount: Int
     @Binding var gameplayPaused: Bool
+    var purseCollectTargetInScene: CGPoint?
 
     func makeUIView(context: Context) -> SKView {
         let view = SKView()
@@ -176,6 +210,7 @@ private struct GameSKBridge: UIViewRepresentable {
     func updateUIView(_ uiView: SKView, context: Context) {
         guard let scene = context.coordinator.scene else { return }
         scene.syncGameplayPaused(gameplayPaused)
+        scene.setPurseCollectDestination(purseCollectTargetInScene)
         uiView.isPaused = gameplayPaused
 
         if scene.size != size {
