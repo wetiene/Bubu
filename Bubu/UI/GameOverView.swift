@@ -6,27 +6,37 @@
 import SwiftUI
 
 struct GameOverView: View {
-    let score: Int
+    let runTotal: Int
+    let bestRun: Int
     let onPlayAgain: () -> Void
 
     var body: some View {
         ZStack {
-            Color(red: 0.15, green: 0.18, blue: 0.22)
+            Color.black.opacity(0.55)
                 .ignoresSafeArea()
 
-            VStack(spacing: 32) {
-                Text("Nice try!")
+            VStack(spacing: 22) {
+                Text("Run Over")
                     .font(.system(size: 40, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
 
-                VStack(spacing: 8) {
-                    Text("Score")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                    Text("\(score)")
+                VStack(spacing: 10) {
+                    Text("Animals Saved")
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Text("\(runTotal)")
                         .font(.system(size: 56, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 1.0, green: 0.85, blue: 0.35))
+                        .foregroundStyle(Color(red: 1.0, green: 0.72, blue: 0.2))
+                    HStack(spacing: 8) {
+                        Text("Best Run")
+                            .font(.system(size: 19, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text("\(bestRun)")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                    }
                 }
+                .padding(.vertical, 8)
 
                 Button(action: onPlayAgain) {
                     Text("Play Again")
@@ -35,18 +45,23 @@ struct GameOverView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 18)
                         .background(
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(Color(red: 0.35, green: 0.75, blue: 0.45))
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color(red: 0.2, green: 0.55, blue: 0.95))
                         )
                 }
-                .padding(.horizontal, 36)
-                .padding(.top, 8)
+                .buttonStyle(.plain)
             }
             .padding(24)
+            .frame(maxWidth: 360)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color(UIColor.systemBackground))
+            )
+            .padding(.horizontal, 28)
         }
     }
 }
 
 #Preview {
-    GameOverView(score: 7, onPlayAgain: {})
+    GameOverView(runTotal: 7, bestRun: 12, onPlayAgain: {})
 }

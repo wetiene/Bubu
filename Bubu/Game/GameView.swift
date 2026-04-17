@@ -11,9 +11,14 @@ struct GameView: View {
     @State private var lionCount = 0
     @State private var elephantCount = 0
     @State private var giraffeCount = 0
+    @AppStorage("bestRunAnimals") private var bestRunAnimals = 0
     @State private var purseOverlayOpen = false
     /// Purse center in SpriteKit scene space; measured from SwiftUI layout.
     @State private var purseSceneTarget: CGPoint?
+    @State private var purseShakeSignal = 0
+    @State private var purseShakeAngle: Double = 0
+    @State private var gameOverRunTotal: Int?
+    @State private var gameSessionID = UUID()
 
     private var totalCollected: Int {
         lionCount + elephantCount + giraffeCount
@@ -21,6 +26,10 @@ struct GameView: View {
 
     private var nextRide: RideType {
         currentRide.nextRide
+    }
+
+    private var gameplayOverlayOpen: Bool {
+        purseOverlayOpen || gameOverRunTotal != nil
     }
 
     var body: some View {
@@ -32,12 +41,15 @@ struct GameView: View {
                     lionCount: $lionCount,
                     elephantCount: $elephantCount,
                     giraffeCount: $giraffeCount,
-                    gameplayPaused: $purseOverlayOpen,
-                    purseCollectTargetInScene: purseSceneTarget
+                    gameplayPaused: gameplayOverlayOpen,
+                    purseCollectTargetInScene: purseSceneTarget,
+                    purseShakeSignal: $purseShakeSignal,
+                    runOverTotal: $gameOverRunTotal
                 )
+                .id(gameSessionID)
                 .ignoresSafeArea()
 
-                if !purseOverlayOpen {
+                if !gameplayOverlayOpen {
                     Button {
                         purseOverlayOpen = true
                     } label: {
@@ -47,6 +59,7 @@ struct GameView: View {
                                 .scaledToFit()
                                 .frame(width: 56, height: 56)
                                 .shadow(color: .black.opacity(0.2), radius: 3, y: 2)
+                                .rotationEffect(.degrees(purseShakeAngle), anchor: UnitPoint(x: 0.5, y: 0.82))
 
                             Text("\(totalCollected)")
                                 .font(.system(size: 14, weight: .bold, design: .rounded))
@@ -79,8 +92,17 @@ struct GameView: View {
                     y: geo.size.height - frame.midY
                 )
             }
+            .onChange(of: purseShakeSignal) { _, _ in
+                Task { @MainActor in
+                    withAnimation(.easeOut(duration: 0.07)) { purseShakeAngle = 11 }
+                    try? await Task.sleep(for: .milliseconds(72))
+                    withAnimation(.easeInOut(duration: 0.09)) { purseShakeAngle = -9 }
+                    try? await Task.sleep(for: .milliseconds(95))
+                    withAnimation(.easeOut(duration: 0.11)) { purseShakeAngle = 0 }
+                }
+            }
             .overlay(alignment: .topTrailing) {
-                if !purseOverlayOpen {
+                if !gameplayOverlayOpen {
                     Button {
                         currentRide = currentRide.nextRide
                     } label: {
@@ -106,6 +128,20 @@ struct GameView: View {
                     purseInventoryOverlay
                 }
             }
+            .overlay {
+                if let runTotal = gameOverRunTotal {
+                    GameOverView(
+                        runTotal: runTotal,
+                        bestRun: bestRunAnimals,
+                        onPlayAgain: restartRun
+                    )
+                }
+            }
+            .onChange(of: gameOverRunTotal) { _, newValue in
+                guard let runTotal = newValue else { return }
+                bestRunAnimals = max(bestRunAnimals, runTotal)
+                purseOverlayOpen = false
+            }
         }
         .background(Color(red: 0.5, green: 0.78, blue: 0.95))
     }
@@ -119,6 +155,32 @@ struct GameView: View {
                 Text("Purse")
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .foregroundStyle(.primary)
+
+                VStack(spacing: 10) {
+                    Text("Current Run Collection")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Text("\(totalCollected)")
+                        .font(.system(size: 52, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color(red: 0.97, green: 0.34, blue: 0.56))
+                    HStack(spacing: 8) {
+                        Text("Best Run")
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text("\(bestRunAnimals)")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                    }
+                    Text("Hits make you drop animals.")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(UIColor.secondarySystemBackground))
+                )
 
                 VStack(alignment: .leading, spacing: 16) {
                     animalRow(label: "Lion", count: lionCount, imageName: "lion")
@@ -164,6 +226,15 @@ struct GameView: View {
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
         }
     }
+
+    private func restartRun() {
+        purseOverlayOpen = false
+        gameOverRunTotal = nil
+        lionCount = 0
+        elephantCount = 0
+        giraffeCount = 0
+        gameSessionID = UUID()
+    }
 }
 
 // MARK: - UIKit bridge
@@ -185,8 +256,10 @@ private struct GameSKBridge: UIViewRepresentable {
     @Binding var lionCount: Int
     @Binding var elephantCount: Int
     @Binding var giraffeCount: Int
-    @Binding var gameplayPaused: Bool
+    let gameplayPaused: Bool
     var purseCollectTargetInScene: CGPoint?
+    @Binding var purseShakeSignal: Int
+    @Binding var runOverTotal: Int?
 
     func makeUIView(context: Context) -> SKView {
         let view = SKView()
@@ -201,6 +274,17 @@ private struct GameSKBridge: UIViewRepresentable {
             elephant: $elephantCount,
             giraffe: $giraffeCount
         )
+        let coordinator = context.coordinator
+        coordinator.purseShakeBinding = $purseShakeSignal
+        coordinator.runOverBinding = $runOverTotal
+        scene.onPurseShakeRequested = { [weak coordinator] in
+            coordinator?.purseShakeBinding?.wrappedValue += 1
+        }
+        scene.onRunOverRequested = { [weak coordinator] runTotal in
+            DispatchQueue.main.async {
+                coordinator?.runOverBinding?.wrappedValue = runTotal
+            }
+        }
         view.presentScene(scene)
         context.coordinator.scene = scene
         context.coordinator.lastAppliedRide = nil
@@ -209,9 +293,19 @@ private struct GameSKBridge: UIViewRepresentable {
 
     func updateUIView(_ uiView: SKView, context: Context) {
         guard let scene = context.coordinator.scene else { return }
+        let coordinator = context.coordinator
+        coordinator.purseShakeBinding = $purseShakeSignal
+        coordinator.runOverBinding = $runOverTotal
+        scene.onPurseShakeRequested = { [weak coordinator] in
+            coordinator?.purseShakeBinding?.wrappedValue += 1
+        }
+        scene.onRunOverRequested = { [weak coordinator] runTotal in
+            DispatchQueue.main.async {
+                coordinator?.runOverBinding?.wrappedValue = runTotal
+            }
+        }
         scene.syncGameplayPaused(gameplayPaused)
         scene.setPurseCollectDestination(purseCollectTargetInScene)
-        uiView.isPaused = gameplayPaused
 
         if scene.size != size {
             scene.size = size
@@ -234,6 +328,8 @@ private struct GameSKBridge: UIViewRepresentable {
     final class Coordinator {
         var scene: GameScene?
         var lastAppliedRide: RideType?
+        var purseShakeBinding: Binding<Int>?
+        var runOverBinding: Binding<Int?>?
     }
 }
 
