@@ -102,7 +102,12 @@ final class GameScene: SKScene {
     var giraffeBinding: Binding<Int>?
 
     var gameplayPausedFromUI = false
+    var appLifecyclePaused = false
     var purseDestinationFromUI: CGPoint?
+
+    var isGameplayPaused: Bool {
+        gameplayPausedFromUI || appLifecyclePaused
+    }
 
     var sceneTime: TimeInterval = 0
     var isStumbling = false
@@ -128,18 +133,11 @@ final class GameScene: SKScene {
     var peakCollectedThisRun = 0
 
     var onPurseShakeRequested: (() -> Void)?
-    var onRunOverRequested: ((Int) -> Void)?
     var onPlayerHit: (() -> Void)?
     var onPlayerHealed: (() -> Void)?
     var onGroundTopChanged: ((CGFloat) -> Void)?
 
     var skyEnvironment: SkyEnvironmentController?
-
-    let distantParallaxTileAssetName: String? = nil
-    let distantParallaxScrollMultiplier: CGFloat = 0.28
-    var distantTile0: SKSpriteNode?
-    var distantTile1: SKSpriteNode?
-    var distantTileWidth: CGFloat = 0
 
     let minSpawnSeparationX: CGFloat = 310
     let animalTapSlopPoints: CGFloat = 132
@@ -152,16 +150,9 @@ final class GameScene: SKScene {
     let playerHazardHeight: CGFloat = 28
     let playerHazardLiftFromFeet: CGFloat = 10
 
-    var coyoteTimer: CGFloat = 0
-    let coyoteSeconds: CGFloat = 0.16
-
-    var jumpBufferTimer: CGFloat = 0
-    let jumpBufferSeconds: CGFloat = 0.14
-
     var playerUniformBaseScale: CGFloat = 1
     var jumpJuiceWasInAir = false
     var totalCollectedThisRun = 0
-    var runOverDispatched = false
     let maxLives = 4
     var estimatedLives = 4
     var timeToNextHeartPickup: TimeInterval = 7.5
@@ -175,11 +166,20 @@ final class GameScene: SKScene {
     }
 
     func syncGameplayPaused(_ paused: Bool) {
-        let wasPaused = gameplayPausedFromUI
         gameplayPausedFromUI = paused
-        if wasPaused != paused {
-            resetFrameTiming()
-        }
+        refreshGameplayPauseState()
+    }
+
+    func syncAppLifecyclePaused(_ paused: Bool) {
+        appLifecyclePaused = paused
+        refreshGameplayPauseState()
+    }
+
+    func refreshGameplayPauseState() {
+        let shouldPause = isGameplayPaused
+        guard isPaused != shouldPause else { return }
+        isPaused = shouldPause
+        resetFrameTiming()
     }
 
     func setPurseCollectDestination(_ point: CGPoint?) {

@@ -20,8 +20,6 @@ extension GameScene {
         let isSecondJump = !grounded && jumpsRemaining == 1
         velocityY = isSecondJump ? secondJumpImpulse : firstJumpImpulse
         jumpsRemaining -= 1
-        coyoteTimer = 0
-        jumpBufferTimer = 0
         jumpJuiceWasInAir = true
         applyJumpJuice(isSecondJump: isSecondJump)
     }
@@ -30,7 +28,7 @@ extension GameScene {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
-        if gameplayPausedFromUI {
+        if isGameplayPaused {
             return
         }
         let location = touch.location(in: self)

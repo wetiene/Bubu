@@ -29,7 +29,6 @@ extension GameScene {
         for child in itemsLayer.children {
             child.position.x -= effectiveScrollSpeed() * step
         }
-        scrollDistantParallaxIfNeeded(step: step)
     }
 
     func updateStumble(step: CGFloat, dt: TimeInterval) {
@@ -107,16 +106,14 @@ extension GameScene {
     }
 
     override func update(_ currentTime: TimeInterval) {
-        // 1) Compute dt.
+        if isGameplayPaused {
+            return
+        }
+
         guard let dt = computeFrameDelta(currentTime: currentTime) else {
             return
         }
         let step = CGFloat(dt)
-
-        // 2) Guard pause.
-        if gameplayPausedFromUI {
-            return
-        }
 
         // Keep per-frame branch decisions stable even if stumble ends mid-frame.
         let wasStumbling = isStumbling
@@ -155,8 +152,6 @@ extension GameScene {
         playerRoot.position.y = groundHeight
         playerRoot.zRotation = 0
         restorePlayerUniformScale()
-        coyoteTimer = coyoteSeconds
-        jumpBufferTimer = 0
         jumpsRemaining = maxJumpCount
         invulnerableUntil = sceneTime + 2.85
     }

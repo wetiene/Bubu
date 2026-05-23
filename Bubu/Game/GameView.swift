@@ -7,8 +7,10 @@ import SpriteKit
 import SwiftUI
 
 struct GameView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Binding var currentRide: RideType
     @State private var livesRemaining: Int = 4
+    @State private var appLifecyclePaused = false
     @State private var lionCount = 0
     @State private var elephantCount = 0
     @State private var giraffeCount = 0
@@ -57,6 +59,7 @@ struct GameView: View {
                     elephantCount: $elephantCount,
                     giraffeCount: $giraffeCount,
                     gameplayPaused: gameplayOverlayOpen,
+                    appLifecyclePaused: appLifecyclePaused,
                     purseCollectTargetInScene: purseSceneTarget,
                     purseShakeSignal: $purseShakeSignal,
                     playerHitSignal: $playerHitSignal,
@@ -92,6 +95,8 @@ struct GameView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(GameControlPressStyle())
+                    .accessibilityLabel("Purse")
+                    .accessibilityHint("Opens your collected animals")
                     .padding(.top, 12)
                     .padding(.leading, 16)
                     .background {
@@ -154,6 +159,8 @@ struct GameView: View {
                             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                     }
                     .buttonStyle(GameControlPressStyle())
+                    .accessibilityLabel("Change ride")
+                    .accessibilityValue(nextRide.shortLabel)
                     .padding(.leading, 16)
                     .padding(.bottom, rideBottomPadding(sceneHeight: geo.size.height))
                     .background {
@@ -224,6 +231,16 @@ struct GameView: View {
                 guard updatedLives > previousLives else { return }
                 livesRemaining = updatedLives
                 animateHeartRefill(refilledIndex: previousLives)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .active:
+                    appLifecyclePaused = false
+                case .inactive, .background:
+                    appLifecyclePaused = true
+                @unknown default:
+                    break
+                }
             }
         }
         .background(Color(red: 0.5, green: 0.78, blue: 0.95))
@@ -316,6 +333,7 @@ struct GameView: View {
                         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Back to game")
             }
             .padding(28)
         }
@@ -454,6 +472,7 @@ private struct GameSKBridge: UIViewRepresentable {
     @Binding var elephantCount: Int
     @Binding var giraffeCount: Int
     let gameplayPaused: Bool
+    let appLifecyclePaused: Bool
     var purseCollectTargetInScene: CGPoint?
     @Binding var purseShakeSignal: Int
     @Binding var playerHitSignal: Int
@@ -480,26 +499,13 @@ private struct GameSKBridge: UIViewRepresentable {
         coordinator.healSignalBinding = $playerHealSignal
         coordinator.latestRunTotalBinding = $latestRunTotal
         coordinator.groundTopBinding = $groundTopY
-        scene.onPurseShakeRequested = { [weak coordinator] in
-            coordinator?.purseShakeBinding?.wrappedValue += 1
-        }
-        scene.onPlayerHit = { [weak coordinator, weak scene] in
-            DispatchQueue.main.async {
-                coordinator?.hitSignalBinding?.wrappedValue += 1
-                coordinator?.latestRunTotalBinding?.wrappedValue = scene?.totalCollectedThisRun ?? 0
-            }
-        }
-        scene.onPlayerHealed = { [weak coordinator] in
-            DispatchQueue.main.async {
-                coordinator?.healSignalBinding?.wrappedValue += 1
-            }
-        }
-        scene.onGroundTopChanged = { [weak coordinator] groundTop in
-            DispatchQueue.main.async {
-                coordinator?.groundTopBinding?.wrappedValue = groundTop
-            }
-        }
+        scene.onPurseShakeRequested = Self.makePurseShakeHandler(coordinator: coordinator)
+        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator, scene: scene)
+        scene.onPlayerHealed = Self.makePlayerHealHandler(coordinator: coordinator)
+        scene.onGroundTopChanged = Self.makeGroundTopHandler(coordinator: coordinator)
         view.presentScene(scene)
+        scene.syncAppLifecyclePaused(appLifecyclePaused)
+        scene.syncGameplayPaused(gameplayPaused)
         context.coordinator.scene = scene
         context.coordinator.lastAppliedRide = nil
         return view
@@ -513,25 +519,11 @@ private struct GameSKBridge: UIViewRepresentable {
         coordinator.healSignalBinding = $playerHealSignal
         coordinator.latestRunTotalBinding = $latestRunTotal
         coordinator.groundTopBinding = $groundTopY
-        scene.onPurseShakeRequested = { [weak coordinator] in
-            coordinator?.purseShakeBinding?.wrappedValue += 1
-        }
-        scene.onPlayerHit = { [weak coordinator, weak scene] in
-            DispatchQueue.main.async {
-                coordinator?.hitSignalBinding?.wrappedValue += 1
-                coordinator?.latestRunTotalBinding?.wrappedValue = scene?.totalCollectedThisRun ?? 0
-            }
-        }
-        scene.onPlayerHealed = { [weak coordinator] in
-            DispatchQueue.main.async {
-                coordinator?.healSignalBinding?.wrappedValue += 1
-            }
-        }
-        scene.onGroundTopChanged = { [weak coordinator] groundTop in
-            DispatchQueue.main.async {
-                coordinator?.groundTopBinding?.wrappedValue = groundTop
-            }
-        }
+        scene.onPurseShakeRequested = Self.makePurseShakeHandler(coordinator: coordinator)
+        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator, scene: scene)
+        scene.onPlayerHealed = Self.makePlayerHealHandler(coordinator: coordinator)
+        scene.onGroundTopChanged = Self.makeGroundTopHandler(coordinator: coordinator)
+        scene.syncAppLifecyclePaused(appLifecyclePaused)
         scene.syncGameplayPaused(gameplayPaused)
         scene.setPurseCollectDestination(purseCollectTargetInScene)
 
@@ -552,6 +544,43 @@ private struct GameSKBridge: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
+    }
+
+    private static func mutateOnMain(_ work: @escaping () -> Void) {
+        DispatchQueue.main.async(execute: work)
+    }
+
+    private static func makePurseShakeHandler(coordinator: Coordinator) -> () -> Void {
+        { [weak coordinator] in
+            mutateOnMain {
+                coordinator?.purseShakeBinding?.wrappedValue += 1
+            }
+        }
+    }
+
+    private static func makePlayerHitHandler(coordinator: Coordinator, scene: GameScene) -> () -> Void {
+        { [weak coordinator, weak scene] in
+            mutateOnMain {
+                coordinator?.hitSignalBinding?.wrappedValue += 1
+                coordinator?.latestRunTotalBinding?.wrappedValue = scene?.totalCollectedThisRun ?? 0
+            }
+        }
+    }
+
+    private static func makePlayerHealHandler(coordinator: Coordinator) -> () -> Void {
+        { [weak coordinator] in
+            mutateOnMain {
+                coordinator?.healSignalBinding?.wrappedValue += 1
+            }
+        }
+    }
+
+    private static func makeGroundTopHandler(coordinator: Coordinator) -> (CGFloat) -> Void {
+        { [weak coordinator] groundTop in
+            mutateOnMain {
+                coordinator?.groundTopBinding?.wrappedValue = groundTop
+            }
+        }
     }
 
     final class Coordinator {

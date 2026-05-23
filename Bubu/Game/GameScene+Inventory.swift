@@ -33,16 +33,19 @@ extension GameScene {
     }
 
     func registerCollect(kind: AnimalKind) {
-        let pursePoint = pursePointInScene()
-        switch kind {
-        case .lion: lionBinding?.wrappedValue += 1
-        case .elephant: elephantBinding?.wrappedValue += 1
-        case .giraffe: giraffeBinding?.wrappedValue += 1
+        performOnMain { [weak self] in
+            guard let self else { return }
+            let pursePoint = self.pursePointInScene()
+            switch kind {
+            case .lion: self.lionBinding?.wrappedValue += 1
+            case .elephant: self.elephantBinding?.wrappedValue += 1
+            case .giraffe: self.giraffeBinding?.wrappedValue += 1
+            }
+            self.totalCollectedThisRun += 1
+            self.refreshPeakCollectedForSpeed()
+            self.playHappyCollect(at: pursePoint)
+            self.playPurseCollectPulse(at: pursePoint)
         }
-        totalCollectedThisRun += 1
-        refreshPeakCollectedForSpeed()
-        playHappyCollect(at: pursePoint)
-        playPurseCollectPulse(at: pursePoint)
     }
 
     func currentTotalCollected() -> Int {
@@ -54,15 +57,6 @@ extension GameScene {
         if t > peakCollectedThisRun {
             peakCollectedThisRun = t
         }
-    }
-
-    func requestRunOverIfNeeded() {
-        guard !runOverDispatched else { return }
-        guard currentTotalCollected() == 0 else { return }
-        // Avoid ending the run if the player is hit before collecting anything.
-        guard totalCollectedThisRun > 0 || peakCollectedThisRun > 0 else { return }
-        runOverDispatched = true
-        onRunOverRequested?(totalCollectedThisRun)
     }
 
     /// Scroll speed from best purse total this run; never drops when animals are lost.
@@ -82,6 +76,17 @@ extension GameScene {
     }
 
     func subtractAnimalsWeightedReturningKinds(count: Int) -> [AnimalKind] {
+        if Thread.isMainThread {
+            return subtractAnimalsWeightedReturningKindsOnMain(count: count)
+        }
+        var removed: [AnimalKind] = []
+        DispatchQueue.main.sync {
+            removed = subtractAnimalsWeightedReturningKindsOnMain(count: count)
+        }
+        return removed
+    }
+
+    private func subtractAnimalsWeightedReturningKindsOnMain(count: Int) -> [AnimalKind] {
         var removed: [AnimalKind] = []
         var remaining = count
         while remaining > 0 {

@@ -134,8 +134,6 @@ extension GameScene {
         isStumbling = true
         stumbleElapsed = 0
         velocityY = -280
-        coyoteTimer = 0
-        jumpBufferTimer = 0
         playerRoot.removeAction(forKey: "jumpJuice")
         playerRoot.removeAction(forKey: "landJuice")
         restorePlayerUniformScale()

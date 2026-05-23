@@ -35,6 +35,7 @@ struct HomeView: View {
                         )
                         .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
                 }
+                .accessibilityLabel("Play")
                 .padding(.horizontal, 40)
             }
         }

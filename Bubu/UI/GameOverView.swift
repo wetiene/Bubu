@@ -50,6 +50,7 @@ struct GameOverView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Play again")
             }
             .padding(24)
             .frame(maxWidth: 360)

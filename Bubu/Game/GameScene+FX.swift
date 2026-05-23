@@ -133,7 +133,7 @@ extension GameScene {
     }
 
     func spawnDroppedAnimalFall(dropped kind: AnimalKind, slot: Int) {
-        let tex = SKTexture(imageNamed: kind.textureName)
+        let tex = GameTextures.named(kind.textureName)
         tex.filteringMode = .linear
         let sprite = SKSpriteNode(texture: tex)
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0)
@@ -249,7 +249,7 @@ extension GameScene {
     }
 
     func playHeartHealPickupFX(at position: CGPoint) {
-        let heartFlash = SKSpriteNode(texture: SKTexture(imageNamed: "heart-full"))
+        let heartFlash = SKSpriteNode(texture: GameTextures.named("heart-full"))
         heartFlash.zPosition = 560
         heartFlash.position = position
         heartFlash.setScale(0.52)

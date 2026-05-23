@@ -56,7 +56,7 @@ extension GameScene {
     }
 
     func makeObstacleSprite(kind: ObstacleKind) -> SKNode {
-        let tex = SKTexture(imageNamed: kind.textureName)
+        let tex = GameTextures.named(kind.textureName)
         tex.filteringMode = .linear
         let sprite = SKSpriteNode(texture: tex)
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0)
@@ -86,7 +86,7 @@ extension GameScene {
         ud["kind"] = kind.rawValue
         root.userData = ud
 
-        let sprite = SKSpriteNode(texture: SKTexture(imageNamed: kind.textureName))
+        let sprite = SKSpriteNode(texture: GameTextures.named(kind.textureName))
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0)
         sprite.name = "animalSprite"
         let th = kind.targetHeight
@@ -138,7 +138,7 @@ extension GameScene {
         let root = SKNode()
         root.name = "heartPickup"
 
-        let texture = SKTexture(imageNamed: "heart-full")
+        let texture = GameTextures.named("heart-full")
         texture.filteringMode = .linear
         let sprite = SKSpriteNode(texture: texture)
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)

@@ -20,7 +20,7 @@ extension GameScene {
         playerRoot.removeAction(forKey: "jumpJuice")
         playerRoot.removeAction(forKey: "landJuice")
         let name = resolvedAssetName(for: ride)
-        playerRoot.texture = SKTexture(imageNamed: name)
+        playerRoot.texture = GameTextures.named(name)
         let th = targetHeight(for: ride)
         let h = playerRoot.texture?.size().height ?? 0
         if h > 0.5 {
@@ -43,24 +43,22 @@ extension GameScene {
         isStumbling = false
         stumbleElapsed = 0
         invulnerableUntil = 0
-        lionBinding?.wrappedValue = 0
-        elephantBinding?.wrappedValue = 0
-        giraffeBinding?.wrappedValue = 0
+        performOnMain { [weak self] in
+            self?.lionBinding?.wrappedValue = 0
+            self?.elephantBinding?.wrappedValue = 0
+            self?.giraffeBinding?.wrappedValue = 0
+        }
         velocityY = 0
-        coyoteTimer = 0
-        jumpBufferTimer = 0
         jumpJuiceWasInAir = false
         playerUniformBaseScale = 1
         jumpsRemaining = maxJumpCount
         peakCollectedThisRun = 0
         totalCollectedThisRun = 0
-        runOverDispatched = false
         estimatedLives = maxLives
         heartSpawnCooldownUntil = 0
         lastDamageSceneTime = -100
 
         buildEnvironment()
-        buildDistantParallaxIfAssetAvailable()
         buildGround()
         addChild(itemsLayer)
 
@@ -84,59 +82,6 @@ extension GameScene {
     }
 
     // MARK: - World
-
-    /// Two identical wide sprites, bottom-aligned above `groundHeight`, for seamless horizontal wrap.
-    func buildDistantParallaxIfAssetAvailable() {
-        distantTile0?.removeFromParent()
-        distantTile1?.removeFromParent()
-        distantTile0 = nil
-        distantTile1 = nil
-        distantTileWidth = 0
-
-        guard let asset = distantParallaxTileAssetName, UIImage(named: asset) != nil else { return }
-
-        let tex = SKTexture(imageNamed: asset)
-        tex.filteringMode = .linear
-        let th = tex.size().height
-        guard th > 0.5 else { return }
-
-        let targetH = min(size.height * 0.26, 200)
-        let scale = targetH / th
-        let displayW = tex.size().width * scale
-        distantTileWidth = displayW
-
-        let marginAboveGround: CGFloat = 10
-        let baseY = groundHeight + marginAboveGround
-
-        let a = SKSpriteNode(texture: tex)
-        let b = SKSpriteNode(texture: tex)
-        for node in [a, b] {
-            node.anchorPoint = CGPoint(x: 0, y: 0)
-            node.setScale(scale)
-            node.zPosition = -12
-        }
-        a.position = CGPoint(x: 0, y: baseY)
-        b.position = CGPoint(x: displayW, y: baseY)
-        addChild(a)
-        addChild(b)
-        distantTile0 = a
-        distantTile1 = b
-    }
-
-    func scrollDistantParallaxIfNeeded(step: CGFloat) {
-        guard let a = distantTile0, let b = distantTile1 else { return }
-        let w = distantTileWidth
-        guard w > 1 else { return }
-        let dx = effectiveScrollSpeed() * distantParallaxScrollMultiplier * step
-        a.position.x -= dx
-        b.position.x -= dx
-        if a.position.x + w < 0 {
-            a.position.x = b.position.x + w
-        }
-        if b.position.x + w < 0 {
-            b.position.x = a.position.x + w
-        }
-    }
 
     func buildGround() {
         let w = max(size.width, 400) * 2
@@ -178,7 +123,7 @@ extension GameScene {
 
     func makePlayerSprite() -> SKSpriteNode {
         let name = resolvedAssetName(for: .run)
-        let sprite = SKSpriteNode(texture: SKTexture(imageNamed: name))
+        let sprite = SKSpriteNode(texture: GameTextures.named(name))
         sprite.name = "player"
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0)
         return sprite
