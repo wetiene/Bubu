@@ -31,7 +31,7 @@ enum SkyEnvironmentTiming {
     }
 }
 
-private struct SkyGradientPalette: Equatable {
+private struct SkyGradientPalette {
     let top: SKColor
     let middle: SKColor
     let bottom: SKColor
@@ -53,40 +53,63 @@ private struct SkyGradientPalette: Equatable {
         bottom: SKColor(hex: 0x3F5F91)
     )
 
-    /// Matches `.sunset` at t=0 of sunset→night; bottom is pre-darkened for a monotonic dusk path.
-    static let sunsetAdjusted = SkyGradientPalette(
-        top: SKColor(hex: 0x9B7ACB),
-        middle: SKColor(hex: 0xF48BA5),
-        bottom: SKColor(hex: 0xFFB77A)
-    )
-
-    func lerp(to other: SkyGradientPalette, t: CGFloat) -> SkyGradientPalette {
-        let u = SkyMath.clamp(t, min: 0, max: 1)
-        return SkyGradientPalette(
-            top: top.mixed(with: other.top, t: u),
-            middle: middle.mixed(with: other.middle, t: u),
-            bottom: bottom.mixed(with: other.bottom, t: u)
-        )
-    }
-
-    /// Sunset→night: keep top/middle on schedule; pull the horizon darker a bit earlier.
-    func lerpSunsetToNight(t: CGFloat) -> SkyGradientPalette {
-        let u = SkyMath.smoothstep(t)
-        let uBottom = SkyMath.clamp(u * 1.18, min: 0, max: 1)
-        return SkyGradientPalette(
-            top: top.mixed(with: SkyGradientPalette.night.top, t: u),
-            middle: middle.mixed(with: SkyGradientPalette.night.middle, t: u),
-            bottom: bottom.mixed(with: SkyGradientPalette.night.bottom, t: uBottom)
-        )
+    static func blendedBottomColor(
+        dayWeight: CGFloat,
+        sunsetWeight: CGFloat,
+        nightWeight: CGFloat
+    ) -> SKColor {
+        let d = Self.day.bottom.skyRGBA
+        let s = Self.sunset.bottom.skyRGBA
+        let n = Self.night.bottom.skyRGBA
+        return SkyRGBA(
+            r: d.r * dayWeight + s.r * sunsetWeight + n.r * nightWeight,
+            g: d.g * dayWeight + s.g * sunsetWeight + n.g * nightWeight,
+            b: d.b * dayWeight + s.b * sunsetWeight + n.b * nightWeight,
+            a: d.a * dayWeight + s.a * sunsetWeight + n.a * nightWeight
+        ).skColor
     }
 }
 
-/// Per-frame sky state: palette is lerped phase-to-phase; influences drive clouds/stars/moon.
+private struct StarPlacement {
+    let xFrac: CGFloat
+    let yFrac: CGFloat
+    let baseScale: CGFloat
+    let textureName: String
+    let twinklePhase: CGFloat
+}
+
+private enum StarField {
+    static let minCount = 9
+    static let maxCount = 16
+    static let minSpacing: CGFloat = 0.095
+    static let xRange: ClosedRange<CGFloat> = 0.06...0.94
+    static let yRange: ClosedRange<CGFloat> = 0.72...0.96
+    static let baseScaleRange: ClosedRange<CGFloat> = 0.92...1.08
+    static let baseScalePreferred: ClosedRange<CGFloat> = 0.6...1.04
+    static let twinklePhaseMax: CGFloat = 3.5
+    static let textureNames = ["star1", "star2", "star3"]
+    static let maxCandidateAttempts = 50
+    static let moonYFrac: CGFloat = 0.78
+    static let moonAvoidRadius: CGFloat = 0.12
+}
+
+/// Per-frame sky alphas (sum ≤ 1 during transitions); drives pre-baked gradient layers.
 private struct SkyPhaseState {
-    let palette: SkyGradientPalette
-    let dayInfluence: CGFloat
-    let sunsetInfluence: CGFloat
-    let nightInfluence: CGFloat
+    let dayAlpha: CGFloat
+    let sunsetAlpha: CGFloat
+    let nightAlpha: CGFloat
+
+    var dayInfluence: CGFloat { dayAlpha }
+    var sunsetInfluence: CGFloat { sunsetAlpha }
+    var nightInfluence: CGFloat { nightAlpha }
+
+    var backgroundBottomColor: SKColor {
+        SkyGradientPalette.blendedBottomColor(
+            dayWeight: dayAlpha,
+            sunsetWeight: sunsetAlpha,
+            nightWeight: nightAlpha
+        )
+    }
 }
 
 // MARK: - Controller
@@ -102,20 +125,19 @@ final class SkyEnvironmentController {
 
     private weak var scene: GameScene?
     private let root = SKNode()
-    private var skyA: SKSpriteNode?
-    private var skyB: SKSpriteNode?
-    private var skyCrossfadeFrontIsB = false
+    private var daySky: SKSpriteNode?
+    private var sunsetSky: SKSpriteNode?
+    private var nightSky: SKSpriteNode?
     private var moon: SKSpriteNode?
     private let starsContainer = SKNode()
     private let cloudsContainer = SKNode()
     private var atmosphere: SKSpriteNode?
     private var clouds: [SKSpriteNode] = []
     private var stars: [SKSpriteNode] = []
+    private var starPlacements: [StarPlacement] = []
+    private let starFieldSeed: UInt64
 
     private var elapsed: TimeInterval = 0
-    private var lastPalette: SkyGradientPalette?
-    private var lastGradientRebuildTime: TimeInterval = -1
-    private let gradientRebuildMinInterval: TimeInterval = 0.12
     private let moonOnLeft: Bool
     private let moonWidthFraction: CGFloat = 0.14
     #if DEBUG
@@ -125,6 +147,7 @@ final class SkyEnvironmentController {
     init(scene: GameScene) {
         self.scene = scene
         moonOnLeft = Bool.random()
+        starFieldSeed = UInt64.random(in: .min ... .max)
     }
 
     func attach(to scene: GameScene) {
@@ -135,19 +158,15 @@ final class SkyEnvironmentController {
         root.zPosition = Z.sky
         scene.addChild(root)
 
-        let W = max(scene.size.width, 2)
-        let H = max(scene.size.height, 2)
-
-        let a = SKSpriteNode(color: .clear, size: CGSize(width: W, height: H))
-        a.anchorPoint = CGPoint(x: 0, y: 0)
-        a.position = .zero
-        let b = SKSpriteNode(color: .clear, size: CGSize(width: W, height: H))
-        b.anchorPoint = CGPoint(x: 0, y: 0)
-        b.position = .zero
-        skyA = a
-        skyB = b
-        root.addChild(a)
-        root.addChild(b)
+        let day = makeSkyLayer(name: "daySky", z: 0)
+        let sunset = makeSkyLayer(name: "sunsetSky", z: 1)
+        let night = makeSkyLayer(name: "nightSky", z: 2)
+        daySky = day
+        sunsetSky = sunset
+        nightSky = night
+        root.addChild(day)
+        root.addChild(sunset)
+        root.addChild(night)
 
         starsContainer.zPosition = Z.stars - Z.sky
         root.addChild(starsContainer)
@@ -165,6 +184,8 @@ final class SkyEnvironmentController {
         root.addChild(cloudsContainer)
         populateClouds()
 
+        let W = max(scene.size.width, 2)
+        let H = max(scene.size.height, 2)
         let atmo = SKSpriteNode(color: .white, size: CGSize(width: W, height: H))
         atmo.anchorPoint = CGPoint(x: 0, y: 0)
         atmo.position = .zero
@@ -175,19 +196,19 @@ final class SkyEnvironmentController {
         root.addChild(atmo)
 
         elapsed = 0
-        lastPalette = nil
         relayout()
     }
 
     func detach() {
         root.removeFromParent()
-        skyA = nil
-        skyB = nil
+        daySky = nil
+        sunsetSky = nil
+        nightSky = nil
         moon = nil
         atmosphere = nil
         clouds = []
         stars = []
-        lastPalette = nil
+        starPlacements = []
     }
 
     func relayout() {
@@ -196,10 +217,7 @@ final class SkyEnvironmentController {
         let H = max(scene.size.height, 2)
         let screen = CGSize(width: W, height: H)
 
-        for sky in [skyA, skyB] {
-            sky?.size = screen
-            sky?.position = .zero
-        }
+        regenerateSkyTextures(screenSize: screen)
         atmosphere?.size = screen
 
         if let moon, let tex = moon.texture, tex.size().width > 0.5 {
@@ -211,25 +229,46 @@ final class SkyEnvironmentController {
 
         layoutClouds(screen: screen)
         layoutStars(screen: screen)
-        lastPalette = nil
-        lastGradientRebuildTime = -1
         #if DEBUG
         lastPaletteDebugKey = nil
         #endif
-        applyVisuals(state: phaseState(at: elapsed), forceGradient: true)
+        applyVisuals(state: phaseState(at: elapsed))
     }
 
     func update(deltaTime dt: TimeInterval) {
         elapsed += dt
         if elapsed >= SkyEnvironmentTiming.cycleDuration {
             elapsed = elapsed.truncatingRemainder(dividingBy: SkyEnvironmentTiming.cycleDuration)
-            lastGradientRebuildTime = -1
         }
         let state = phaseState(at: elapsed)
-        applyVisuals(state: state, forceGradient: false)
+        applyVisuals(state: state)
         driftClouds(deltaTime: dt)
         twinkleStars()
-        scene?.backgroundColor = state.palette.bottom
+        scene?.backgroundColor = state.backgroundBottomColor
+    }
+
+    private func makeSkyLayer(name: String, z: CGFloat) -> SKSpriteNode {
+        let node = SKSpriteNode(color: .clear, size: .zero)
+        node.name = name
+        node.anchorPoint = CGPoint(x: 0, y: 0)
+        node.position = .zero
+        node.zPosition = z
+        node.alpha = 0
+        return node
+    }
+
+    /// Called only from `attach` / `relayout` — never from `update`.
+    private func regenerateSkyTextures(screenSize: CGSize) {
+        let dayTex = SkyGradientTexture.make(size: screenSize, palette: .day)
+        let sunsetTex = SkyGradientTexture.make(size: screenSize, palette: .sunset)
+        let nightTex = SkyGradientTexture.make(size: screenSize, palette: .night)
+        for (node, tex) in [(daySky, dayTex), (sunsetSky, sunsetTex), (nightSky, nightTex)] {
+            guard let node else { continue }
+            tex.filteringMode = .linear
+            node.texture = tex
+            node.size = screenSize
+            node.position = .zero
+        }
     }
 
     // MARK: - Cycle
@@ -253,68 +292,31 @@ final class SkyEnvironmentController {
         let state: SkyPhaseState
         switch index {
         case 0:
-            state = SkyPhaseState(
-                palette: .day,
-                dayInfluence: 1,
-                sunsetInfluence: 0,
-                nightInfluence: 0
-            )
+            state = SkyPhaseState(dayAlpha: 1, sunsetAlpha: 0, nightAlpha: 0)
         case 1:
-            state = SkyPhaseState(
-                palette: SkyGradientPalette.day.lerp(to: .sunset, t: eased),
-                dayInfluence: 1 - eased,
-                sunsetInfluence: eased,
-                nightInfluence: 0
-            )
+            state = SkyPhaseState(dayAlpha: 1 - eased, sunsetAlpha: eased, nightAlpha: 0)
         case 2:
-            state = SkyPhaseState(
-                palette: .sunset,
-                dayInfluence: 0,
-                sunsetInfluence: 1,
-                nightInfluence: 0
-            )
+            state = SkyPhaseState(dayAlpha: 0, sunsetAlpha: 1, nightAlpha: 0)
         case 3:
-            let palette = SkyGradientPalette.sunsetAdjusted.lerpSunsetToNight(t: u)
-            state = SkyPhaseState(
-                palette: palette,
-                dayInfluence: 0,
-                sunsetInfluence: 1 - eased,
-                nightInfluence: eased
-            )
+            state = SkyPhaseState(dayAlpha: 0, sunsetAlpha: 1 - eased, nightAlpha: eased)
         case 4:
-            state = SkyPhaseState(
-                palette: .night,
-                dayInfluence: 0,
-                sunsetInfluence: 0,
-                nightInfluence: 1
-            )
+            state = SkyPhaseState(dayAlpha: 0, sunsetAlpha: 0, nightAlpha: 1)
         case 5:
-            state = SkyPhaseState(
-                palette: SkyGradientPalette.night.lerp(to: .day, t: eased),
-                dayInfluence: eased,
-                sunsetInfluence: 0,
-                nightInfluence: 1 - eased
-            )
+            state = SkyPhaseState(dayAlpha: eased, sunsetAlpha: 0, nightAlpha: 1 - eased)
         default:
-            state = SkyPhaseState(
-                palette: .day,
-                dayInfluence: 1,
-                sunsetInfluence: 0,
-                nightInfluence: 0
-            )
+            state = SkyPhaseState(dayAlpha: 1, sunsetAlpha: 0, nightAlpha: 0)
         }
 
-        state.palette.debugAssertValid()
-        debugLogPaletteIfNeeded(segment: index, u: u, eased: eased, palette: state.palette)
+        debugLogSkyAlphasIfNeeded(segment: index, u: u, eased: eased, state: state)
         return state
     }
 
     #if DEBUG
-    private func debugLogPaletteIfNeeded(
+    private func debugLogSkyAlphasIfNeeded(
         segment: Int,
         u: CGFloat,
         eased: CGFloat,
-        palette: SkyGradientPalette
+        state: SkyPhaseState
     ) {
         let milestone: String?
         switch segment {
@@ -334,32 +336,27 @@ final class SkyEnvironmentController {
         guard key != lastPaletteDebugKey else { return }
         lastPaletteDebugKey = key
 
-        func lum(_ color: SKColor) -> CGFloat {
-            let c = color.skyRGBA
-            return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
-        }
-        let topL = lum(palette.top)
-        let midL = lum(palette.middle)
-        let botL = lum(palette.bottom)
+        let bot = state.backgroundBottomColor.skyRGBA
+        let botL = 0.2126 * bot.r + 0.7152 * bot.g + 0.0722 * bot.b
         print(
-            "[SkyEnvironment] \(milestone) u=\(String(format: "%.3f", u)) eased=\(String(format: "%.3f", eased)) "
-                + "lum top=\(String(format: "%.3f", topL)) mid=\(String(format: "%.3f", midL)) bot=\(String(format: "%.3f", botL))"
+            "[SkyEnvironment] \(milestone) u=\(String(format: "%.3f", u)) "
+                + "alphas day=\(String(format: "%.2f", state.dayAlpha)) "
+                + "sunset=\(String(format: "%.2f", state.sunsetAlpha)) "
+                + "night=\(String(format: "%.2f", state.nightAlpha)) "
+                + "botL=\(String(format: "%.3f", botL))"
         )
-        if botL > 0.72 {
-            print("[SkyEnvironment] warning: bottom luminance unusually high during dusk")
-        }
     }
     #else
-    private func debugLogPaletteIfNeeded(
+    private func debugLogSkyAlphasIfNeeded(
         segment: Int,
         u: CGFloat,
         eased: CGFloat,
-        palette: SkyGradientPalette
+        state: SkyPhaseState
     ) {}
     #endif
 
-    private func applyVisuals(state: SkyPhaseState, forceGradient: Bool) {
-        updateSkyGradient(palette: state.palette, force: forceGradient)
+    private func applyVisuals(state: SkyPhaseState) {
+        updateSkyAlphas(state: state)
         updateAtmosphere(state: state)
         updateCloudsAppearance(state: state)
         updateStarsAndMoon(state: state)
@@ -367,36 +364,10 @@ final class SkyEnvironmentController {
 
     // MARK: - Sky
 
-    private func updateSkyGradient(palette: SkyGradientPalette, force: Bool) {
-        guard let skyA, let skyB, let scene else { return }
-        if !force, let last = lastPalette, last == palette { return }
-        let sinceLastRebuild = elapsed - lastGradientRebuildTime
-        if !force,
-           lastPalette != nil,
-           sinceLastRebuild >= 0,
-           sinceLastRebuild < gradientRebuildMinInterval {
-            return
-        }
-
-        let tex = SkyGradientTexture.make(size: scene.size, palette: palette)
-        tex.filteringMode = .linear
-
-        skyA.removeAllActions()
-        skyB.removeAllActions()
-
-        let front = skyCrossfadeFrontIsB ? skyB : skyA
-        let back = skyCrossfadeFrontIsB ? skyA : skyB
-        front.texture = tex
-        front.alpha = 1
-        back.texture = tex
-        back.alpha = 0
-
-        if lastPalette == nil {
-            skyCrossfadeFrontIsB = true
-        }
-
-        lastPalette = palette
-        lastGradientRebuildTime = elapsed
+    private func updateSkyAlphas(state: SkyPhaseState) {
+        daySky?.alpha = state.dayAlpha
+        sunsetSky?.alpha = state.sunsetAlpha
+        nightSky?.alpha = state.nightAlpha
     }
 
     private func updateAtmosphere(state: SkyPhaseState) {
@@ -463,7 +434,7 @@ final class SkyEnvironmentController {
     private func updateCloudsAppearance(state: SkyPhaseState) {
         let alpha = SkyMath.lerp(
             SkyMath.lerp(0.92, 0.9, state.sunsetInfluence),
-            0.34,
+            0.28,
             state.nightInfluence
         )
         let tintDay = SKColor(white: 1, alpha: 1)
@@ -487,30 +458,126 @@ final class SkyEnvironmentController {
 
     // MARK: - Stars
 
+    private struct SeededRNG {
+        private var state: UInt64
+
+        init(seed: UInt64) {
+            state = seed == 0 ? 0xA5A5_A5A5_A5A5_A5A5 : seed
+        }
+
+        mutating func nextUnit() -> CGFloat {
+            state = state &* 6_364_136_223_846_793_005 &+ 1
+            return CGFloat((state >> 11) & 0x1FFFFF) / CGFloat(0x1FFFFF)
+        }
+
+        mutating func nextCGFloat(in range: ClosedRange<CGFloat>) -> CGFloat {
+            range.lowerBound + (range.upperBound - range.lowerBound) * nextUnit()
+        }
+
+        mutating func nextInt(in range: ClosedRange<Int>) -> Int {
+            let span = range.upperBound - range.lowerBound + 1
+            return range.lowerBound + Int(nextUnit() * CGFloat(span)) % span
+        }
+
+        mutating func pick<T>(_ items: [T]) -> T? {
+            guard !items.isEmpty else { return nil }
+            return items[nextInt(in: 0...(items.count - 1))]
+        }
+    }
+
+    private func resolvedStarTextureNames() -> [String] {
+        let available = StarField.textureNames.filter { UIImage(named: $0) != nil }
+        if available.isEmpty {
+            return StarField.textureNames
+        }
+        return available
+    }
+
+    private func moonXFrac() -> CGFloat {
+        moonOnLeft ? 0.16 : 0.84
+    }
+
+    private func isTooCloseToMoon(xFrac: CGFloat, yFrac: CGFloat) -> Bool {
+        let dx = xFrac - moonXFrac()
+        let dy = yFrac - StarField.moonYFrac
+        let r = StarField.moonAvoidRadius
+        return dx * dx + dy * dy < r * r
+    }
+
+    private func isTooCloseToExistingPlacements(
+        xFrac: CGFloat,
+        yFrac: CGFloat,
+        existing: [StarPlacement]
+    ) -> Bool {
+        let minDist = StarField.minSpacing
+        for placed in existing {
+            let dx = xFrac - placed.xFrac
+            let dy = yFrac - placed.yFrac
+            if dx * dx + dy * dy < minDist * minDist {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func generateStarPlacements() -> [StarPlacement] {
+        var rng = SeededRNG(seed: starFieldSeed)
+        let textures = resolvedStarTextureNames()
+        let targetCount = rng.nextInt(in: StarField.minCount...StarField.maxCount)
+        var placements: [StarPlacement] = []
+        placements.reserveCapacity(targetCount)
+
+        var attempts = 0
+        let attemptLimit = targetCount * StarField.maxCandidateAttempts
+
+        while placements.count < targetCount, attempts < attemptLimit {
+            attempts += 1
+            let xFrac = rng.nextCGFloat(in: StarField.xRange)
+            let yFrac = rng.nextCGFloat(in: StarField.yRange)
+
+            if isTooCloseToMoon(xFrac: xFrac, yFrac: yFrac) { continue }
+            if isTooCloseToExistingPlacements(xFrac: xFrac, yFrac: yFrac, existing: placements) {
+                continue
+            }
+
+            let baseScale: CGFloat
+            if rng.nextUnit() < 0.75 {
+                baseScale = rng.nextCGFloat(in: StarField.baseScalePreferred)
+            } else {
+                baseScale = rng.nextCGFloat(in: StarField.baseScaleRange)
+            }
+
+            guard let textureName = rng.pick(textures) else { continue }
+
+            placements.append(
+                StarPlacement(
+                    xFrac: xFrac,
+                    yFrac: yFrac,
+                    baseScale: baseScale,
+                    textureName: textureName,
+                    twinklePhase: rng.nextCGFloat(in: 0...StarField.twinklePhaseMax)
+                )
+            )
+        }
+
+        return placements
+    }
+
     private func populateStars() {
         stars = []
-        let textures = ["star1", "stars1", "stars2"]
-        let placements: [(CGFloat, CGFloat, CGFloat, Int, CGFloat)] = [
-            (0.08, 0.88, 0.5, 0, 0),
-            (0.18, 0.92, 0.35, 1, 1.2),
-            (0.28, 0.85, 0.4, 2, 2.1),
-            (0.42, 0.9, 0.45, 0, 0.8),
-            (0.55, 0.86, 0.38, 1, 2.5),
-            (0.68, 0.93, 0.42, 2, 1.6),
-            (0.78, 0.87, 0.36, 0, 3.2),
-            (0.88, 0.91, 0.48, 1, 0.4),
-            (0.32, 0.94, 0.32, 2, 1.9),
-            (0.62, 0.95, 0.3, 0, 2.8),
-        ]
-        for p in placements {
-            let star = SKSpriteNode(imageNamed: textures[p.3 % textures.count])
+        if starPlacements.isEmpty {
+            starPlacements = generateStarPlacements()
+        }
+
+        for p in starPlacements {
+            let star = SKSpriteNode(imageNamed: p.textureName)
             star.anchorPoint = CGPoint(x: 0.5, y: 0.5)
             star.alpha = 0
             star.userData = NSMutableDictionary()
-            star.userData?["xFrac"] = p.0
-            star.userData?["yFrac"] = p.1
-            star.userData?["baseScale"] = p.2
-            star.userData?["twinklePhase"] = p.4
+            star.userData?["xFrac"] = p.xFrac
+            star.userData?["yFrac"] = p.yFrac
+            star.userData?["baseScale"] = p.baseScale
+            star.userData?["twinklePhase"] = p.twinklePhase
             starsContainer.addChild(star)
             stars.append(star)
         }
@@ -520,7 +587,7 @@ final class SkyEnvironmentController {
         for star in stars {
             let xFrac = star.userData?["xFrac"] as? CGFloat ?? 0.5
             let yFrac = star.userData?["yFrac"] as? CGFloat ?? 0.9
-            let baseScale = star.userData?["baseScale"] as? CGFloat ?? 0.4
+            let baseScale = star.userData?["baseScale"] as? CGFloat ?? 0.95
             if let tex = star.texture, tex.size().width > 0.5 {
                 star.setScale((screen.width * 0.04 * baseScale) / tex.size().width)
             }
@@ -532,16 +599,24 @@ final class SkyEnvironmentController {
         for star in stars {
             let phase = star.userData?["twinklePhase"] as? CGFloat ?? 0
             let base = star.userData?["displayAlpha"] as? CGFloat ?? 0
-            let twinkle = 0.78 + 0.22 * sin(elapsed * 1.4 + Double(phase))
+            let twinkle = 0.90 + 0.10 * sin(elapsed * 1.4 + Double(phase))
             star.alpha = base * CGFloat(twinkle)
         }
     }
 
-    private func updateStarsAndMoon(state: SkyPhaseState) {
-        let nightRise = SkyMath.smoothstep(
+    /// Stars fade in with night, stay up while the sky still reads dark, fade out when day wins.
+    private func starVisibility(state: SkyPhaseState) -> CGFloat {
+        let rise = SkyMath.smoothstep(
             SkyMath.clamp((state.nightInfluence - 0.05) / 0.55, min: 0, max: 1)
         )
-        let starBase = nightRise * 0.55
+        let fadeForDay = 1 - SkyMath.smoothstep(
+            SkyMath.clamp((state.dayInfluence - 0.50) / 0.30, min: 0, max: 1)
+        )
+        return rise * fadeForDay
+    }
+
+    private func updateStarsAndMoon(state: SkyPhaseState) {
+        let starBase = starVisibility(state: state) * 0.75
         for star in stars {
             star.userData?["displayAlpha"] = starBase
         }
@@ -712,25 +787,3 @@ private extension SKColor {
     }
 }
 
-private extension SkyGradientPalette {
-    static func == (lhs: SkyGradientPalette, rhs: SkyGradientPalette) -> Bool {
-        lhs.top.isNear(rhs.top) && lhs.middle.isNear(rhs.middle) && lhs.bottom.isNear(rhs.bottom)
-    }
-
-    func debugAssertValid() {
-        #if DEBUG
-        for (name, color) in [("top", top), ("middle", middle), ("bottom", bottom)] {
-            let rgba = color.skyRGBA
-            guard rgba.isValid else {
-                assertionFailure(
-                    "[SkyEnvironment] invalid \(name) sky color r=\(rgba.r) g=\(rgba.g) b=\(rgba.b) a=\(rgba.a)"
-                )
-                print(
-                    "[SkyEnvironment] invalid \(name) sky color r=\(rgba.r) g=\(rgba.g) b=\(rgba.b) a=\(rgba.a)"
-                )
-                continue
-            }
-        }
-        #endif
-    }
-}
