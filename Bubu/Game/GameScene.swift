@@ -71,6 +71,7 @@ enum ObstacleKind: String, CaseIterable {
     case bush = "bush"
     case cactus = "cactus"
     case fallenLog = "fallen-log"
+    case tallGrass = "tall-grass"
 
     var textureName: String { rawValue }
 
@@ -80,6 +81,7 @@ enum ObstacleKind: String, CaseIterable {
         case .bush: return 52
         case .cactus: return 62
         case .fallenLog: return 46
+        case .tallGrass: return 108
         }
     }
 
@@ -89,6 +91,7 @@ enum ObstacleKind: String, CaseIterable {
         case .bush: return 0
         case .cactus: return 0
         case .fallenLog: return 0
+        case .tallGrass: return 0
         }
     }
 }
