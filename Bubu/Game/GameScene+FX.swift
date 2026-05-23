@@ -4,6 +4,7 @@
 //
 
 import SpriteKit
+import AudioToolbox
 
 extension GameScene {
     // MARK: - Juice (visual-only)
@@ -54,19 +55,34 @@ extension GameScene {
     }
 
     func playHitShake() {
-        func makeShake() -> SKAction {
-            let t: TimeInterval = 0.021
+        func makeShake(amplitude: CGFloat) -> SKAction {
+            let t: TimeInterval = 0.02
             return SKAction.sequence([
-                SKAction.moveBy(x: 5, y: 0, duration: t),
-                SKAction.moveBy(x: -9, y: 0, duration: t),
-                SKAction.moveBy(x: 6, y: 0, duration: t),
-                SKAction.moveBy(x: -2, y: 0, duration: t),
+                SKAction.moveBy(x: amplitude * 0.65, y: 1.2, duration: t),
+                SKAction.moveBy(x: -amplitude, y: -1.6, duration: t),
+                SKAction.moveBy(x: amplitude * 0.72, y: 1.0, duration: t),
+                SKAction.moveBy(x: -amplitude * 0.4, y: -0.6, duration: t),
+                SKAction.moveBy(x: amplitude * 0.2, y: 0, duration: t),
             ])
         }
         playerRoot.removeAction(forKey: "hitShake")
+        playerRoot.removeAction(forKey: "hitSquash")
         itemsLayer.removeAction(forKey: "hitShake")
-        playerRoot.run(makeShake(), withKey: "hitShake")
-        itemsLayer.run(makeShake(), withKey: "hitShake")
+        playerRoot.run(makeShake(amplitude: 14), withKey: "hitShake")
+        itemsLayer.run(makeShake(amplitude: 8), withKey: "hitShake")
+
+        let b = playerUniformBaseScale
+        let squash = SKAction.group([
+            SKAction.scaleX(to: b * 1.08, duration: 0.07),
+            SKAction.scaleY(to: b * 0.88, duration: 0.07),
+        ])
+        squash.timingMode = .easeOut
+        let restore = SKAction.group([
+            SKAction.scaleX(to: b, duration: 0.12),
+            SKAction.scaleY(to: b, duration: 0.12),
+        ])
+        restore.timingMode = .easeOut
+        playerRoot.run(SKAction.sequence([squash, restore]), withKey: "hitSquash")
     }
 
     func playAnimalPickupSparkle(at position: CGPoint) {
@@ -157,7 +173,11 @@ extension GameScene {
         let duration: TimeInterval = 0.54 + Double(slot % 4) * 0.05
         let move = SKAction.move(to: CGPoint(x: endX, y: landY), duration: duration)
         move.timingMode = .easeIn
-        let spin = SKAction.rotate(byAngle: CGFloat.random(in: -0.22...0.22), duration: duration)
+        // Keep landed drops from looking flat by biasing away from near-zero tilt.
+        let tiltSign: CGFloat = Bool.random() ? 1 : -1
+        let landedTilt = tiltSign * CGFloat.random(in: 0.28...0.62)
+        let spin = SKAction.rotate(toAngle: landedTilt, duration: duration)
+        spin.timingMode = .easeIn
         let settle = SKAction.sequence([
             SKAction.scaleX(to: sprite.xScale * 1.14, duration: 0.07),
             SKAction.scaleX(to: sprite.xScale, duration: 0.09),
@@ -194,5 +214,85 @@ extension GameScene {
             let fade = SKAction.fadeOut(withDuration: 0.32)
             dot.run(.sequence([.group([move, fade]), .removeFromParent()]))
         }
+    }
+
+    func playPurseCollectPulse(at position: CGPoint) {
+        let ring = SKShapeNode(circleOfRadius: 13)
+        ring.fillColor = .clear
+        ring.strokeColor = SKColor(red: 1.0, green: 0.9, blue: 0.5, alpha: 0.95)
+        ring.lineWidth = 2.4
+        ring.position = position
+        ring.zPosition = 505
+        addChild(ring)
+
+        let expand = SKAction.scale(to: 1.55, duration: 0.16)
+        expand.timingMode = .easeOut
+        let fade = SKAction.fadeOut(withDuration: 0.16)
+        ring.run(.sequence([.group([expand, fade]), .removeFromParent()]))
+
+        for i in 0..<5 {
+            let dot = SKShapeNode(circleOfRadius: CGFloat.random(in: 2...3.5))
+            dot.fillColor = SKColor(red: 1.0, green: 0.95, blue: 0.55, alpha: 1)
+            dot.strokeColor = SKColor(white: 1, alpha: 0.35)
+            dot.lineWidth = 0.8
+            dot.position = position
+            dot.zPosition = 504
+            addChild(dot)
+
+            let angle = CGFloat(i) * (.pi * 2 / 5) + CGFloat.random(in: -0.18...0.18)
+            let radius = CGFloat.random(in: 16...24)
+            let move = SKAction.moveBy(x: cos(angle) * radius, y: sin(angle) * radius, duration: 0.17)
+            move.timingMode = .easeOut
+            let fadeOut = SKAction.fadeOut(withDuration: 0.17)
+            dot.run(.sequence([.group([move, fadeOut]), .removeFromParent()]))
+        }
+    }
+
+    func playHeartHealPickupFX(at position: CGPoint) {
+        let heartFlash = SKSpriteNode(texture: SKTexture(imageNamed: "heart-full"))
+        heartFlash.zPosition = 560
+        heartFlash.position = position
+        heartFlash.setScale(0.52)
+        addChild(heartFlash)
+
+        let popOut = SKAction.scale(to: 0.9, duration: 0.08)
+        popOut.timingMode = .easeOut
+        let settle = SKAction.scale(to: 0.68, duration: 0.1)
+        settle.timingMode = .easeInEaseOut
+        let fade = SKAction.fadeOut(withDuration: 0.08)
+        heartFlash.run(.sequence([popOut, settle, .group([fade]), .removeFromParent()]))
+
+        let colors: [SKColor] = [
+            SKColor(red: 1.0, green: 0.88, blue: 0.95, alpha: 1),
+            SKColor(red: 1.0, green: 0.72, blue: 0.84, alpha: 1),
+            SKColor(red: 1.0, green: 0.96, blue: 0.55, alpha: 1),
+        ]
+        for i in 0..<9 {
+            let dot = SKShapeNode(circleOfRadius: CGFloat.random(in: 2.4...4.2))
+            dot.fillColor = colors[i % colors.count]
+            dot.strokeColor = SKColor(white: 1, alpha: 0.28)
+            dot.lineWidth = 0.8
+            dot.position = position
+            dot.zPosition = 552
+            addChild(dot)
+
+            let angle = CGFloat.random(in: 0...(2 * .pi))
+            let radius = CGFloat.random(in: 18...34)
+            let rise = CGFloat.random(in: 8...20)
+            let move = SKAction.moveBy(x: cos(angle) * radius, y: sin(angle) * radius + rise, duration: 0.23)
+            move.timingMode = .easeOut
+            let fadeOut = SKAction.fadeOut(withDuration: 0.23)
+            dot.run(.sequence([.group([move, fadeOut]), .removeFromParent()]))
+        }
+
+        let pulse = SKAction.sequence([
+            SKAction.scale(to: playerUniformBaseScale * 1.06, duration: 0.08),
+            SKAction.scale(to: playerUniformBaseScale, duration: 0.12),
+        ])
+        pulse.timingMode = .easeOut
+        playerRoot.removeAction(forKey: "healPulse")
+        playerRoot.run(pulse, withKey: "healPulse")
+
+        AudioServicesPlaySystemSound(1103)
     }
 }

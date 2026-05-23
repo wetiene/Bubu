@@ -80,29 +80,40 @@ extension GameScene {
         guard let kind = animalKind(from: animal) else { return }
 
         let worldStart = itemsLayer.convert(animal.position, to: self)
+        let dest = pursePointInScene()
         animal.removeFromParent()
         animal.position = worldStart
         animal.name = "flyingToPurse"
         animal.zPosition = 500
+        animal.alpha = 1
         addChild(animal)
 
         playAnimalPickupSparkle(at: worldStart)
 
-        let dest = pursePointInScene()
         let duration: TimeInterval = 0.38
         let move = arcMoveToPurse(from: worldStart, to: dest, duration: duration)
         let shrink = SKAction.scale(to: 0.2, duration: duration)
         shrink.timingMode = .easeIn
 
-        let pop = SKAction.scale(to: 1.14, duration: 0.06)
-        pop.timingMode = .easeOut
+        let prePop = SKAction.group([
+            SKAction.scale(to: 1.18, duration: 0.055),
+            SKAction.moveBy(x: 0, y: 8, duration: 0.055),
+        ])
+        prePop.timingMode = .easeOut
+        let settle = SKAction.group([
+            SKAction.scale(to: 1.02, duration: 0.05),
+            SKAction.moveBy(x: 0, y: -6, duration: 0.05),
+        ])
+        settle.timingMode = .easeInEaseOut
         let flight = SKAction.group([move, shrink])
+        let landFade = SKAction.fadeOut(withDuration: 0.055)
+        landFade.timingMode = .easeIn
 
         let done = SKAction.run { [weak self] in
             animal.removeFromParent()
             self?.registerCollect(kind: kind)
         }
 
-        animal.run(SKAction.sequence([pop, flight, done]))
+        animal.run(SKAction.sequence([prePop, settle, flight, landFade, done]))
     }
 }

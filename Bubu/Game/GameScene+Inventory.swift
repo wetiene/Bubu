@@ -33,6 +33,7 @@ extension GameScene {
     }
 
     func registerCollect(kind: AnimalKind) {
+        let pursePoint = pursePointInScene()
         switch kind {
         case .lion: lionBinding?.wrappedValue += 1
         case .elephant: elephantBinding?.wrappedValue += 1
@@ -40,7 +41,8 @@ extension GameScene {
         }
         totalCollectedThisRun += 1
         refreshPeakCollectedForSpeed()
-        playHappyCollect(at: pursePointInScene())
+        playHappyCollect(at: pursePoint)
+        playPurseCollectPulse(at: pursePoint)
     }
 
     func currentTotalCollected() -> Int {
