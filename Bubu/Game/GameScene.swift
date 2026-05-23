@@ -120,20 +120,17 @@ final class GameScene: SKScene {
     let secondJumpImpulse: CGFloat = 620
     let maxJumpCount = 2
 
-    let speedStepPerAnimal: CGFloat = 10.00
-    let maxScrollSpeed: CGFloat = 300
+    let speedStepPerAnimal: CGFloat = 6.00
+    let maxScrollSpeed: CGFloat = 240
     var peakCollectedThisRun = 0
 
     var onPurseShakeRequested: (() -> Void)?
     var onRunOverRequested: ((Int) -> Void)?
     var onPlayerHit: (() -> Void)?
+    var onPlayerHealed: (() -> Void)?
     var onGroundTopChanged: ((CGFloat) -> Void)?
 
-    let skyScrollMultiplier: CGFloat = 0.16
-    var skyTile0: SKSpriteNode?
-    var skyTile1: SKSpriteNode?
-    var skyTileWidth: CGFloat = 0
-    var skyLoopUsesAssetTexture = false
+    var skyEnvironment: SkyEnvironmentController?
 
     let distantParallaxTileAssetName: String? = nil
     let distantParallaxScrollMultiplier: CGFloat = 0.28
@@ -162,8 +159,11 @@ final class GameScene: SKScene {
     var jumpJuiceWasInAir = false
     var totalCollectedThisRun = 0
     var runOverDispatched = false
-
-    static let skyAssetName = "bg-sky"
+    let maxLives = 4
+    var estimatedLives = 4
+    var timeToNextHeartPickup: TimeInterval = 7.5
+    var heartSpawnCooldownUntil: TimeInterval = 0
+    var lastDamageSceneTime: TimeInterval = -100
 
     func bind(lion: Binding<Int>, elephant: Binding<Int>, giraffe: Binding<Int>) {
         lionBinding = lion

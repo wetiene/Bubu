@@ -29,7 +29,6 @@ extension GameScene {
         for child in itemsLayer.children {
             child.position.x -= effectiveScrollSpeed() * step
         }
-        scrollSkyIfNeeded(step: step)
         scrollDistantParallaxIfNeeded(step: step)
     }
 
@@ -69,6 +68,7 @@ extension GameScene {
     func updateSpawning(dt: TimeInterval) {
         timeToNextObstacle -= dt
         timeToNextAnimal -= dt
+        timeToNextHeartPickup -= dt
 
         if timeToNextObstacle <= 0, obstacleCount() < 1 {
             spawnObstacleIfClear()
@@ -77,6 +77,15 @@ extension GameScene {
         if timeToNextAnimal <= 0, animalCount() < 1 {
             spawnAnimalIfClear()
             timeToNextAnimal = Double.random(in: 3.2...5.0)
+        }
+
+        if timeToNextHeartPickup <= 0, canSpawnHeartPickup() {
+            let didWinChanceRoll = shouldSpawnHeartPickupNow()
+            let didSpawn = didWinChanceRoll ? spawnHeartPickupIfClear() : false
+            if didSpawn {
+                heartSpawnCooldownUntil = sceneTime + Double.random(in: 10.0...13.5)
+            }
+            timeToNextHeartPickup = nextHeartSpawnDelay(afterAttemptSucceeded: didSpawn)
         }
     }
 
@@ -87,6 +96,7 @@ extension GameScene {
     }
 
     func updateNormalCollisionsAndStateTransitions() {
+        checkHeartPickupHits()
         if sceneTime >= invulnerableUntil {
             checkObstacleHits()
         }
@@ -120,6 +130,7 @@ extension GameScene {
 
         // Shared world movement/scrolling.
         updateSharedWorldScroll(step: step)
+        updateEnvironment(deltaTime: dt)
 
         // 4) Update spawning/timers.
         if !wasStumbling {
@@ -158,9 +169,41 @@ extension GameScene {
         itemsLayer.children.filter { $0.name == "animal" }.count
     }
 
+    func heartPickupCount() -> Int {
+        itemsLayer.children.filter { $0.name == "heartPickup" }.count
+    }
+
     func pruneOffscreen() {
         for child in itemsLayer.children where child.position.x < -220 {
             child.removeFromParent()
         }
+    }
+
+    func canSpawnHeartPickup() -> Bool {
+        guard estimatedLives < maxLives else { return false }
+        guard heartPickupCount() == 0 else { return false }
+        guard sceneTime >= heartSpawnCooldownUntil else { return false }
+        return true
+    }
+
+    func shouldSpawnHeartPickupNow() -> Bool {
+        var spawnChance: CGFloat = 0.18
+        if sceneTime - lastDamageSceneTime <= 7.5 {
+            spawnChance += 0.16
+        }
+        if estimatedLives <= 1 {
+            spawnChance += 0.24
+        } else if estimatedLives == 2 {
+            spawnChance += 0.09
+        }
+        spawnChance = min(spawnChance, 0.72)
+        return CGFloat.random(in: 0...1) < spawnChance
+    }
+
+    func nextHeartSpawnDelay(afterAttemptSucceeded: Bool) -> TimeInterval {
+        if afterAttemptSucceeded {
+            return Double.random(in: 10.8...14.2)
+        }
+        return Double.random(in: 2.2...3.8)
     }
 }

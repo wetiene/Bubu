@@ -55,8 +55,11 @@ extension GameScene {
         peakCollectedThisRun = 0
         totalCollectedThisRun = 0
         runOverDispatched = false
+        estimatedLives = maxLives
+        heartSpawnCooldownUntil = 0
+        lastDamageSceneTime = -100
 
-        buildSky()
+        buildEnvironment()
         buildDistantParallaxIfAssetAvailable()
         buildGround()
         addChild(itemsLayer)
@@ -71,122 +74,16 @@ extension GameScene {
 
         timeToNextObstacle = Double.random(in: 7.2...10.0)
         timeToNextAnimal = Double.random(in: 3.4...5.2)
+        timeToNextHeartPickup = Double.random(in: 8.5...12.0)
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
-        relayoutSkyTilesIfPresent()
+        relayoutEnvironmentIfNeeded()
         publishGroundTopChanged()
     }
 
     // MARK: - World
-
-    /// Repositions/rescales the two sky tiles after `size` changes (e.g. first valid layout after `didMove`).
-    func relayoutSkyTilesIfPresent() {
-        guard let a = skyTile0, let b = skyTile1 else { return }
-        let W = max(size.width, 2)
-        let H = max(size.height, 2)
-
-        if skyLoopUsesAssetTexture,
-           let tex = a.texture,
-           tex.size().width > 0.5,
-           tex.size().height > 0.5 {
-            tex.filteringMode = .linear
-            let th = tex.size().height
-            let tw = tex.size().width
-            let scale = H / th
-            skyTileWidth = tw * scale
-            a.colorBlendFactor = 0
-            b.colorBlendFactor = 0
-            a.anchorPoint = CGPoint(x: 0, y: 0)
-            b.anchorPoint = CGPoint(x: 0, y: 0)
-            a.zPosition = -40
-            b.zPosition = -40
-            a.setScale(scale)
-            b.setScale(scale)
-            a.texture = tex
-            b.texture = tex
-            a.position = CGPoint(x: 0, y: 0)
-            b.position = CGPoint(x: skyTileWidth, y: 0)
-        } else {
-            skyTileWidth = W
-            a.anchorPoint = CGPoint(x: 0, y: 0)
-            b.anchorPoint = CGPoint(x: 0, y: 0)
-            a.zPosition = -40
-            b.zPosition = -40
-            a.size = CGSize(width: W, height: H)
-            b.size = CGSize(width: W, height: H)
-            a.position = CGPoint(x: 0, y: 0)
-            b.position = CGPoint(x: W, y: 0)
-        }
-    }
-
-    /// Called from `didMove(to:)` after `removeAllChildren()` — always rebuilds the two-tile sky layer.
-    func buildSky() {
-        skyTile0?.removeFromParent()
-        skyTile1?.removeFromParent()
-        skyTile0 = nil
-        skyTile1 = nil
-        skyTileWidth = 0
-        skyLoopUsesAssetTexture = false
-
-        let W = max(size.width, 2)
-        let H = max(size.height, 2)
-
-        if UIImage(named: Self.skyAssetName) == nil {
-            print(
-                "[Bubu GameScene] SKY: UIImage(named: \"\(Self.skyAssetName)\") is nil — asset missing or imageset PNG not in bundle (see Assets.xcassets/\(Self.skyAssetName).imageset). Using magenta DEBUG fallback (two scrolling tiles)."
-            )
-            let a = SKSpriteNode(color: SKColor(red: 1.0, green: 0.2, blue: 0.95, alpha: 1), size: CGSize(width: W, height: H))
-            let b = SKSpriteNode(color: SKColor(red: 1.0, green: 0.2, blue: 0.95, alpha: 1), size: CGSize(width: W, height: H))
-            skyTile0 = a
-            skyTile1 = b
-            addChild(a)
-            addChild(b)
-            relayoutSkyTilesIfPresent()
-            return
-        }
-
-        let tex = SKTexture(imageNamed: Self.skyAssetName)
-        tex.filteringMode = .linear
-        let th = tex.size().height
-        let tw = tex.size().width
-        guard th > 0.5, tw > 0.5 else {
-            print("[Bubu GameScene] SKY: texture '\(Self.skyAssetName)' has invalid size — using magenta DEBUG fallback.")
-            let a = SKSpriteNode(color: SKColor(red: 1.0, green: 0.2, blue: 0.95, alpha: 1), size: CGSize(width: W, height: H))
-            let b = SKSpriteNode(color: SKColor(red: 1.0, green: 0.2, blue: 0.95, alpha: 1), size: CGSize(width: W, height: H))
-            skyTile0 = a
-            skyTile1 = b
-            addChild(a)
-            addChild(b)
-            relayoutSkyTilesIfPresent()
-            return
-        }
-
-        let a = SKSpriteNode(texture: tex)
-        let b = SKSpriteNode(texture: tex)
-        skyTile0 = a
-        skyTile1 = b
-        skyLoopUsesAssetTexture = true
-        addChild(a)
-        addChild(b)
-        relayoutSkyTilesIfPresent()
-    }
-
-    func scrollSkyIfNeeded(step: CGFloat) {
-        guard let a = skyTile0, let b = skyTile1 else { return }
-        let w = skyTileWidth
-        guard w > 1 else { return }
-        let dx = effectiveScrollSpeed() * skyScrollMultiplier * step
-        a.position.x -= dx
-        b.position.x -= dx
-        if a.position.x + w < 0 {
-            a.position.x = b.position.x + w
-        }
-        if b.position.x + w < 0 {
-            b.position.x = a.position.x + w
-        }
-    }
 
     /// Two identical wide sprites, bottom-aligned above `groundHeight`, for seamless horizontal wrap.
     func buildDistantParallaxIfAssetAvailable() {
