@@ -170,7 +170,10 @@ final class GameScene: SKScene {
         elephantBinding = elephant
         giraffeBinding = giraffe
         livesBinding = lives
-        syncLivesToUI()
+        deferSwiftUIState { [weak self] in
+            guard let self else { return }
+            self.livesBinding?.wrappedValue = self.lives
+        }
     }
 
     func syncLivesToUI() {

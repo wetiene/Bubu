@@ -10,9 +10,12 @@ import UIKit
 extension GameScene {
     // MARK: - Scene setup
 
-    /// Reports ground top in SwiftUI/top-origin view coordinates.
+    /// Reports ground top in SwiftUI/top-origin view coordinates (deferred for SwiftUI safety).
     func publishGroundTopChanged() {
-        onGroundTopChanged?(size.height - groundHeight)
+        let groundTop = size.height - groundHeight
+        deferSwiftUIState { [weak self] in
+            self?.onGroundTopChanged?(groundTop)
+        }
     }
 
     /// Visual-only; `currentRide` lives in SwiftUI — call this when the binding changes.
@@ -43,18 +46,12 @@ extension GameScene {
         isStumbling = false
         stumbleElapsed = 0
         invulnerableUntil = 0
-        performOnMain { [weak self] in
-            self?.lionBinding?.wrappedValue = 0
-            self?.elephantBinding?.wrappedValue = 0
-            self?.giraffeBinding?.wrappedValue = 0
-        }
         velocityY = 0
         jumpJuiceWasInAir = false
         playerUniformBaseScale = 1
         jumpsRemaining = maxJumpCount
         lives = maxLives
         runEnded = false
-        syncLivesToUI()
         heartSpawnCooldownUntil = 0
         lastDamageSceneTime = -100
 
@@ -68,7 +65,7 @@ extension GameScene {
         playerRoot.zRotation = 0
         addChild(playerRoot)
 
-        publishGroundTopChanged()
+        applyDeferredSwiftUIReset()
 
         timeToNextObstacle = Double.random(in: 7.2...10.0)
         timeToNextAnimal = Double.random(in: 3.4...5.2)
@@ -119,6 +116,19 @@ extension GameScene {
             return ride.assetName
         }
         return "bubu"
+    }
+
+    /// Pushes run-start inventory/lives/ground layout into SwiftUI after `didMove` completes.
+    private func applyDeferredSwiftUIReset() {
+        let groundTop = size.height - groundHeight
+        deferSwiftUIState { [weak self] in
+            guard let self else { return }
+            self.lionBinding?.wrappedValue = 0
+            self.elephantBinding?.wrappedValue = 0
+            self.giraffeBinding?.wrappedValue = 0
+            self.livesBinding?.wrappedValue = self.lives
+            self.onGroundTopChanged?(groundTop)
+        }
     }
 
     func makePlayerSprite() -> SKSpriteNode {
