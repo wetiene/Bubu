@@ -22,6 +22,7 @@ extension GameScene {
         jumpsRemaining -= 1
         jumpJuiceWasInAir = true
         applyJumpJuice(isSecondJump: isSecondJump)
+        onJumpPerformed?()
     }
 
     // MARK: - Touches (near-animal first, then exact hit, then jump)

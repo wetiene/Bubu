@@ -8,13 +8,14 @@ import SwiftUI
 
 struct GameView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var achievementStore: AchievementStore
     @Binding var currentRide: RideType
     @State private var livesRemaining: Int = 4
     @State private var appLifecyclePaused = false
     @State private var lionCount = 0
     @State private var elephantCount = 0
     @State private var giraffeCount = 0
-    @AppStorage("bestRunAnimals") private var bestRunAnimals = 0
+    @AppStorage("musicEnabled") private var musicEnabled = true
     @State private var purseOverlayOpen = false
     /// Purse center in SpriteKit scene space; measured from SwiftUI layout.
     @State private var purseSceneTarget: CGPoint?
@@ -55,6 +56,7 @@ struct GameView: View {
             ZStack(alignment: .topLeading) {
                 GameSKBridge(
                     size: geo.size,
+                    achievementStore: achievementStore,
                     currentRide: $currentRide,
                     lionCount: $lionCount,
                     elephantCount: $elephantCount,
@@ -162,14 +164,14 @@ struct GameView: View {
                 if let runTotal = gameOverRunTotal {
                     GameOverView(
                         runTotal: runTotal,
-                        bestRun: bestRunAnimals,
+                        bestRun: achievementStore.progress.bestRunAnimals,
                         onPlayAgain: restartRun
                     )
                 }
             }
             .onChange(of: gameOverRunTotal) { _, newValue in
                 guard let runTotal = newValue else { return }
-                bestRunAnimals = max(bestRunAnimals, runTotal)
+                achievementStore.recordRunEnded(animalsCollected: runTotal)
                 purseOverlayOpen = false
             }
             .onChange(of: playerHitSignal) { _, _ in
@@ -182,11 +184,24 @@ struct GameView: View {
                 switch phase {
                 case .active:
                     appLifecyclePaused = false
+                    BubuAudioManager.shared.setAppActive(true)
                 case .inactive, .background:
                     appLifecyclePaused = true
+                    BubuAudioManager.shared.setAppActive(false)
                 @unknown default:
                     break
                 }
+            }
+            .onAppear {
+                BubuAudioManager.shared.setMusicEnabled(musicEnabled)
+                BubuAudioManager.shared.setAppActive(scenePhase == .active)
+                BubuAudioManager.shared.setGameplayActive(true)
+            }
+            .onDisappear {
+                BubuAudioManager.shared.setGameplayActive(false)
+            }
+            .onChange(of: musicEnabled) { _, enabled in
+                BubuAudioManager.shared.setMusicEnabled(enabled)
             }
         }
         .background(Color(red: 0.5, green: 0.78, blue: 0.95))
@@ -304,7 +319,7 @@ struct GameView: View {
                         Text("Best Run")
                             .font(.system(size: 17, weight: .semibold, design: .rounded))
                             .foregroundStyle(.secondary)
-                        Text("\(bestRunAnimals)")
+                        Text("\(achievementStore.progress.bestRunAnimals)")
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
                     }
@@ -479,6 +494,7 @@ private struct GameControlPressStyle: ButtonStyle {
 
 private struct GameSKBridge: UIViewRepresentable {
     let size: CGSize
+    let achievementStore: AchievementStore
     @Binding var currentRide: RideType
     @Binding var lionCount: Int
     @Binding var elephantCount: Int
@@ -512,9 +528,10 @@ private struct GameSKBridge: UIViewRepresentable {
         coordinator.healSignalBinding = $playerHealSignal
         coordinator.groundTopBinding = $groundTopY
         scene.onPurseShakeRequested = Self.makePurseShakeHandler(coordinator: coordinator)
-        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator)
-        scene.onPlayerHealed = Self.makePlayerHealHandler(coordinator: coordinator)
+        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator, store: achievementStore)
+        scene.onPlayerHealed = Self.makePlayerHealHandler(coordinator: coordinator, store: achievementStore)
         scene.onGroundTopChanged = Self.makeGroundTopHandler(coordinator: coordinator)
+        Self.wireAchievementHandlers(scene: scene, store: achievementStore)
         view.presentScene(scene)
         scene.syncAppLifecyclePaused(appLifecyclePaused)
         scene.syncGameplayPaused(gameplayPaused)
@@ -531,9 +548,10 @@ private struct GameSKBridge: UIViewRepresentable {
         coordinator.healSignalBinding = $playerHealSignal
         coordinator.groundTopBinding = $groundTopY
         scene.onPurseShakeRequested = Self.makePurseShakeHandler(coordinator: coordinator)
-        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator)
-        scene.onPlayerHealed = Self.makePlayerHealHandler(coordinator: coordinator)
+        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator, store: achievementStore)
+        scene.onPlayerHealed = Self.makePlayerHealHandler(coordinator: coordinator, store: achievementStore)
         scene.onGroundTopChanged = Self.makeGroundTopHandler(coordinator: coordinator)
+        Self.wireAchievementHandlers(scene: scene, store: achievementStore)
         scene.syncAppLifecyclePaused(appLifecyclePaused)
         scene.syncGameplayPaused(gameplayPaused)
         scene.setPurseCollectDestination(purseCollectTargetInScene)
@@ -569,18 +587,44 @@ private struct GameSKBridge: UIViewRepresentable {
         }
     }
 
-    private static func makePlayerHitHandler(coordinator: Coordinator) -> () -> Void {
+    private static func makePlayerHitHandler(
+        coordinator: Coordinator,
+        store: AchievementStore
+    ) -> () -> Void {
         { [weak coordinator] in
             mutateOnMain {
+                store.recordHit()
                 coordinator?.hitSignalBinding?.wrappedValue += 1
             }
         }
     }
 
-    private static func makePlayerHealHandler(coordinator: Coordinator) -> () -> Void {
+    private static func makePlayerHealHandler(
+        coordinator: Coordinator,
+        store: AchievementStore
+    ) -> () -> Void {
         { [weak coordinator] in
             mutateOnMain {
+                store.recordHeart()
                 coordinator?.healSignalBinding?.wrappedValue += 1
+            }
+        }
+    }
+
+    private static func wireAchievementHandlers(scene: GameScene, store: AchievementStore) {
+        scene.onAnimalCollected = { kind in
+            mutateOnMain {
+                store.recordAnimal(kind)
+            }
+        }
+        scene.onJumpPerformed = {
+            mutateOnMain {
+                store.recordJump()
+            }
+        }
+        scene.onNightReached = {
+            mutateOnMain {
+                store.recordNightReached()
             }
         }
     }
@@ -605,4 +649,5 @@ private struct GameSKBridge: UIViewRepresentable {
 
 #Preview {
     GameView(currentRide: .constant(.run))
+        .environmentObject(AchievementStore.shared)
 }

@@ -12,6 +12,7 @@ struct BubuApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environmentObject(AchievementStore.shared)
         }
     }
 }

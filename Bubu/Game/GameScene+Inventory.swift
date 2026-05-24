@@ -43,6 +43,7 @@ extension GameScene {
             }
             self.playHappyCollect(at: pursePoint)
             self.playPurseCollectPulse(at: pursePoint)
+            self.onAnimalCollected?(kind)
         }
     }
 

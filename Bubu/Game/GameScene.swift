@@ -135,6 +135,9 @@ final class GameScene: SKScene {
     var onPlayerHit: (() -> Void)?
     var onPlayerHealed: (() -> Void)?
     var onGroundTopChanged: ((CGFloat) -> Void)?
+    var onAnimalCollected: ((AnimalKind) -> Void)?
+    var onJumpPerformed: (() -> Void)?
+    var onNightReached: (() -> Void)?
 
     var skyEnvironment: SkyEnvironmentController?
 

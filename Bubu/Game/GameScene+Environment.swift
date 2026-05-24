@@ -148,6 +148,7 @@ final class SkyEnvironmentController {
     private var starNightVisibility: CGFloat = 0
 
     private var elapsed: TimeInterval = 0
+    private var didReportNightThisCycle = false
     private let moonOnLeft: Bool
     private let moonWidthFraction: CGFloat = 0.14
     #if DEBUG
@@ -206,6 +207,7 @@ final class SkyEnvironmentController {
         root.addChild(atmo)
 
         elapsed = 0
+        didReportNightThisCycle = false
         relayout()
     }
 
@@ -253,6 +255,7 @@ final class SkyEnvironmentController {
             elapsed = elapsed.truncatingRemainder(dividingBy: SkyEnvironmentTiming.cycleDuration)
         }
         let state = phaseState(at: elapsed)
+        reportNightIfNeeded(state: state)
         applyVisuals(state: state)
         driftClouds(deltaTime: dt)
         twinkleStars()
@@ -280,6 +283,18 @@ final class SkyEnvironmentController {
             node.texture = tex
             node.size = screenSize
             node.position = .zero
+        }
+    }
+
+    private func reportNightIfNeeded(state: SkyPhaseState) {
+        if state.nightAlpha >= 0.92 {
+            guard !didReportNightThisCycle else { return }
+            didReportNightThisCycle = true
+            scene?.onNightReached?()
+            return
+        }
+        if state.dayAlpha >= 0.92 {
+            didReportNightThisCycle = false
         }
     }
 
@@ -446,7 +461,7 @@ final class SkyEnvironmentController {
     private func updateCloudsAppearance(state: SkyPhaseState) {
         let alpha = SkyMath.lerp(
             SkyMath.lerp(0.92, 0.9, state.sunsetInfluence),
-            0.44,
+            1.04,
             state.nightInfluence
         )
         let tintDay = SKColor(white: 1, alpha: 1)

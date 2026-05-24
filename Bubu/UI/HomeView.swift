@@ -7,6 +7,8 @@ import SwiftUI
 
 struct HomeView: View {
     let onPlay: () -> Void
+    let onAchievements: () -> Void
+    @AppStorage("musicEnabled") private var musicEnabled = true
 
     var body: some View {
         ZStack {
@@ -37,11 +39,42 @@ struct HomeView: View {
                 }
                 .accessibilityLabel("Play")
                 .padding(.horizontal, 40)
+
+                Button(action: onAchievements) {
+                    Text("Achievements")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(Color(red: 0.55, green: 0.4, blue: 0.95))
+                        )
+                        .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
+                }
+                .accessibilityLabel("Achievements")
+                .padding(.horizontal, 40)
+
+                Toggle(isOn: $musicEnabled) {
+                    Label("Music", systemImage: musicEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.95))
+                }
+                .toggleStyle(.switch)
+                .tint(Color(red: 1.0, green: 0.45, blue: 0.55))
+                .padding(.horizontal, 40)
+                .accessibilityLabel("Background music")
+                .onChange(of: musicEnabled) { _, enabled in
+                    BubuAudioManager.shared.setMusicEnabled(enabled)
+                }
             }
+        }
+        .onAppear {
+            BubuAudioManager.shared.setMusicEnabled(musicEnabled)
         }
     }
 }
 
 #Preview {
-    HomeView(onPlay: {})
+    HomeView(onPlay: {}, onAchievements: {})
 }
