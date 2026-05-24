@@ -343,8 +343,9 @@ struct GameView: View {
 
             VStack(spacing: 16) {
                 Text("Purse")
-                    .font(.system(size: 32, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 52, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
 
                 purseTabPicker
 
@@ -436,7 +437,7 @@ struct GameView: View {
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(UIColor.secondarySystemBackground))
+                    .fill(Color(UIColor.secondarySystemBackground).opacity(0.75))
             )
 
             VStack(alignment: .leading, spacing: 14) {
@@ -448,7 +449,7 @@ struct GameView: View {
             .padding(18)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(UIColor.secondarySystemBackground))
+                    .fill(Color(UIColor.secondarySystemBackground).opacity(0.75))
             )
         }
     }
@@ -463,7 +464,7 @@ struct GameView: View {
             StickersBookContent(store: achievementStore, markSeenOnAppear: false, embedded: true)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(UIColor.secondarySystemBackground).opacity(0.65))
+                        .fill(Color(UIColor.secondarySystemBackground).opacity(0.75))
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
