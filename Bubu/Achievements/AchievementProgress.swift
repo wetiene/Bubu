@@ -15,4 +15,6 @@ struct AchievementProgress: Codable, Equatable {
     var totalHits = 0
     var hasReachedNight = false
     var bestRunAnimals = 0
+    /// Unlocked stickers the player has not opened in the Stickers book yet.
+    var newlyUnlockedAchievementIDs: [String] = []
 }

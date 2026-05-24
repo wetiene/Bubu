@@ -6,6 +6,11 @@
 import SpriteKit
 import SwiftUI
 
+private enum PurseOverlayTab: String, CaseIterable {
+    case animals = "Animals"
+    case stickers = "Stickers"
+}
+
 struct GameView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var achievementStore: AchievementStore
@@ -17,6 +22,8 @@ struct GameView: View {
     @State private var giraffeCount = 0
     @AppStorage("musicEnabled") private var musicEnabled = true
     @State private var purseOverlayOpen = false
+    @State private var purseTab: PurseOverlayTab = .animals
+    @StateObject private var unlockQueue = AchievementUnlockQueue()
     /// Purse center in SpriteKit scene space; measured from SwiftUI layout.
     @State private var purseSceneTarget: CGPoint?
     @State private var purseShakeSignal = 0
@@ -51,6 +58,14 @@ struct GameView: View {
         purseOverlayOpen || gameOverRunTotal != nil || isGameOverTransitioning
     }
 
+    private var showsInGameUnlockCard: Bool {
+        unlockQueue.current != nil && !purseOverlayOpen && gameOverRunTotal == nil
+    }
+
+    private var hasUnseenStickers: Bool {
+        !achievementStore.newlyUnlockedAchievementIDs.isEmpty
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
@@ -75,6 +90,7 @@ struct GameView: View {
 
                 if !gameplayOverlayOpen {
                     Button {
+                        purseTab = .animals
                         purseOverlayOpen = true
                     } label: {
                         ZStack(alignment: .topTrailing) {
@@ -160,6 +176,20 @@ struct GameView: View {
                     purseInventoryOverlay
                 }
             }
+            .overlay(alignment: .top) {
+                if showsInGameUnlockCard, let event = unlockQueue.current {
+                    AchievementUnlockOverlay(event: event)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 52)
+                        .allowsHitTesting(false)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                        .zIndex(20)
+                }
+            }
+            .animation(.spring(response: 0.46, dampingFraction: 0.8), value: unlockQueue.current?.id)
             .overlay {
                 if let runTotal = gameOverRunTotal {
                     GameOverView(
@@ -202,6 +232,14 @@ struct GameView: View {
             }
             .onChange(of: musicEnabled) { _, enabled in
                 BubuAudioManager.shared.setMusicEnabled(enabled)
+            }
+            .onChange(of: achievementStore.unlockEventsRevision) { _, _ in
+                unlockQueue.enqueue(achievementStore.latestUnlockBatch)
+            }
+            .onChange(of: purseTab) { _, tab in
+                if tab == .stickers {
+                    achievementStore.markAchievementsSeen()
+                }
             }
         }
         .background(Color(red: 0.5, green: 0.78, blue: 0.95))
@@ -303,48 +341,22 @@ struct GameView: View {
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
 
-            VStack(spacing: 22) {
+            VStack(spacing: 16) {
                 Text("Purse")
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .foregroundStyle(.primary)
 
-                VStack(spacing: 10) {
-                    Text("Current Run Collection")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text("\(totalCollected)")
-                        .font(.system(size: 52, weight: .heavy, design: .rounded))
-                        .foregroundStyle(Color(red: 0.97, green: 0.34, blue: 0.56))
-                    HStack(spacing: 8) {
-                        Text("Best Run")
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Text("\(achievementStore.progress.bestRunAnimals)")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
-                    }
-                    Text("Hits make you drop animals.")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(18)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(UIColor.secondarySystemBackground))
-                )
+                purseTabPicker
 
-                VStack(alignment: .leading, spacing: 16) {
-                    animalRow(label: "Lion", count: lionCount, imageName: "lion")
-                    animalRow(label: "Elephant", count: elephantCount, imageName: "elephant")
-                    animalRow(label: "Giraffe", count: giraffeCount, imageName: "giraffe")
+                Group {
+                    switch purseTab {
+                    case .animals:
+                        purseAnimalsContent
+                    case .stickers:
+                        purseStickersContent
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(UIColor.secondarySystemBackground))
-                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 Button {
                     purseOverlayOpen = false
@@ -363,7 +375,97 @@ struct GameView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back to game")
             }
-            .padding(28)
+            .padding(24)
+        }
+    }
+
+    private var purseTabPicker: some View {
+        HStack(spacing: 10) {
+            ForEach(PurseOverlayTab.allCases, id: \.self) { tab in
+                Button {
+                    purseTab = tab
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(tab.rawValue)
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                        if tab == .stickers, hasUnseenStickers {
+                            Text("NEW")
+                                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color(red: 1.0, green: 0.42, blue: 0.55)))
+                        }
+                    }
+                    .foregroundStyle(purseTab == tab ? .white : .primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(
+                                purseTab == tab
+                                    ? Color(red: 0.55, green: 0.4, blue: 0.95)
+                                    : Color(UIColor.secondarySystemBackground)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab == .stickers && hasUnseenStickers ? "\(tab.rawValue), new stickers" : tab.rawValue)
+            }
+        }
+    }
+
+    private var purseAnimalsContent: some View {
+        VStack(spacing: 14) {
+            VStack(spacing: 10) {
+                Text("This Run")
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text("\(totalCollected)")
+                    .font(.system(size: 48, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color(red: 0.97, green: 0.34, blue: 0.56))
+                HStack(spacing: 8) {
+                    Text("Best Run")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Text("\(achievementStore.progress.bestRunAnimals)")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(UIColor.secondarySystemBackground))
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
+                animalRow(label: "Lion", count: lionCount, imageName: "lion")
+                animalRow(label: "Elephant", count: elephantCount, imageName: "elephant")
+                animalRow(label: "Giraffe", count: giraffeCount, imageName: "giraffe")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(UIColor.secondarySystemBackground))
+            )
+        }
+    }
+
+    private var purseStickersContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Your sticker book")
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+
+            StickersBookContent(store: achievementStore, markSeenOnAppear: false, embedded: true)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(UIColor.secondarySystemBackground).opacity(0.65))
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 
@@ -385,6 +487,7 @@ struct GameView: View {
         runEndBeatToken += 1
         isGameOverTransitioning = false
         purseOverlayOpen = false
+        purseTab = .animals
         // Reset hit signal while game over is still active so the onChange guard suppresses it.
         playerHitSignal = 0
         playerHealSignal = 0
