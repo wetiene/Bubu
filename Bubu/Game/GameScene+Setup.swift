@@ -52,9 +52,9 @@ extension GameScene {
         jumpJuiceWasInAir = false
         playerUniformBaseScale = 1
         jumpsRemaining = maxJumpCount
-        peakCollectedThisRun = 0
-        totalCollectedThisRun = 0
-        estimatedLives = maxLives
+        lives = maxLives
+        runEnded = false
+        syncLivesToUI()
         heartSpawnCooldownUntil = 0
         lastDamageSceneTime = -100
 

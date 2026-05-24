@@ -130,7 +130,6 @@ final class GameScene: SKScene {
 
     let speedStepPerAnimal: CGFloat = 6.00
     let maxScrollSpeed: CGFloat = 240
-    var peakCollectedThisRun = 0
 
     var onPurseShakeRequested: (() -> Void)?
     var onPlayerHit: (() -> Void)?
@@ -152,17 +151,33 @@ final class GameScene: SKScene {
 
     var playerUniformBaseScale: CGFloat = 1
     var jumpJuiceWasInAir = false
-    var totalCollectedThisRun = 0
     let maxLives = 4
-    var estimatedLives = 4
+    /// Authoritative run lives; mirrored to SwiftUI via `livesBinding`.
+    var lives = 4
+    var runEnded = false
+    var livesBinding: Binding<Int>?
     var timeToNextHeartPickup: TimeInterval = 7.5
     var heartSpawnCooldownUntil: TimeInterval = 0
     var lastDamageSceneTime: TimeInterval = -100
 
-    func bind(lion: Binding<Int>, elephant: Binding<Int>, giraffe: Binding<Int>) {
+    func bind(
+        lion: Binding<Int>,
+        elephant: Binding<Int>,
+        giraffe: Binding<Int>,
+        lives: Binding<Int>
+    ) {
         lionBinding = lion
         elephantBinding = elephant
         giraffeBinding = giraffe
+        livesBinding = lives
+        syncLivesToUI()
+    }
+
+    func syncLivesToUI() {
+        performOnMain { [weak self] in
+            guard let self else { return }
+            self.livesBinding?.wrappedValue = self.lives
+        }
     }
 
     func syncGameplayPaused(_ paused: Bool) {

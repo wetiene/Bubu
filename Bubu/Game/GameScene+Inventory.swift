@@ -41,8 +41,6 @@ extension GameScene {
             case .elephant: self.elephantBinding?.wrappedValue += 1
             case .giraffe: self.giraffeBinding?.wrappedValue += 1
             }
-            self.totalCollectedThisRun += 1
-            self.refreshPeakCollectedForSpeed()
             self.playHappyCollect(at: pursePoint)
             self.playPurseCollectPulse(at: pursePoint)
         }
@@ -52,16 +50,9 @@ extension GameScene {
         (lionBinding?.wrappedValue ?? 0) + (elephantBinding?.wrappedValue ?? 0) + (giraffeBinding?.wrappedValue ?? 0)
     }
 
-    func refreshPeakCollectedForSpeed() {
-        let t = currentTotalCollected()
-        if t > peakCollectedThisRun {
-            peakCollectedThisRun = t
-        }
-    }
-
-    /// Scroll speed from best purse total this run; never drops when animals are lost.
+    /// Scroll speed scales with current purse inventory (slows after obstacle drops).
     func effectiveScrollSpeed() -> CGFloat {
-        min(baseScrollSpeed + CGFloat(peakCollectedThisRun) * speedStepPerAnimal, maxScrollSpeed)
+        min(baseScrollSpeed + CGFloat(currentTotalCollected()) * speedStepPerAnimal, maxScrollSpeed)
     }
 
     /// On obstacle hit: lose 5%–10% of current total (min 1 if any), spread across species by weight. Returns kinds removed (for visuals).

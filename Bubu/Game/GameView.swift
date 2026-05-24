@@ -22,7 +22,6 @@ struct GameView: View {
     @State private var purseShakeAngle: Double = 0
     @State private var playerHitSignal = 0
     @State private var playerHealSignal = 0
-    @State private var latestRunTotal = 0
     @State private var groundTopY: CGFloat?
     @State private var rideButtonHeight: CGFloat = 0
     @State private var gameOverRunTotal: Int?
@@ -36,6 +35,8 @@ struct GameView: View {
     @State private var heartsRowOpacity: Double = 1
     @State private var isGameOverTransitioning = false
     @State private var runEndBeatToken = 0
+
+    private let maxLives = 4
 
     private var totalCollected: Int {
         lionCount + elephantCount + giraffeCount
@@ -58,13 +59,13 @@ struct GameView: View {
                     lionCount: $lionCount,
                     elephantCount: $elephantCount,
                     giraffeCount: $giraffeCount,
+                    livesRemaining: $livesRemaining,
                     gameplayPaused: gameplayOverlayOpen,
                     appLifecyclePaused: appLifecyclePaused,
                     purseCollectTargetInScene: purseSceneTarget,
                     purseShakeSignal: $purseShakeSignal,
                     playerHitSignal: $playerHitSignal,
                     playerHealSignal: $playerHealSignal,
-                    latestRunTotal: $latestRunTotal,
                     groundTopY: $groundTopY
                 )
                 .id(gameSessionID)
@@ -143,35 +144,7 @@ struct GameView: View {
                 }
             }
             .overlay(alignment: .bottomLeading) {
-                if !gameplayOverlayOpen {
-                    Button {
-                        currentRide = currentRide.nextRide
-                    } label: {
-                        Text(nextRide.shortLabel)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                    .fill(Color.black.opacity(0.28))
-                            )
-                            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    }
-                    .buttonStyle(GameControlPressStyle())
-                    .accessibilityLabel("Change ride")
-                    .accessibilityValue(nextRide.shortLabel)
-                    .padding(.leading, 16)
-                    .padding(.bottom, rideBottomPadding(sceneHeight: geo.size.height))
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: RideButtonHeightPreferenceKey.self,
-                                value: proxy.size.height
-                            )
-                        }
-                    }
-                }
+                rideChangeOverlay(sceneHeight: geo.size.height)
             }
             .overlay(alignment: .topTrailing) {
                 if !gameplayOverlayOpen {
@@ -200,37 +173,10 @@ struct GameView: View {
                 purseOverlayOpen = false
             }
             .onChange(of: playerHitSignal) { _, _ in
-                guard !isRestartingRun else { return }
-                guard gameOverRunTotal == nil else { return }
-                let previousLives = livesRemaining
-                let updatedLives = max(0, previousLives - 1)
-                livesRemaining = updatedLives
-                animateHeartLoss(previousLives: previousLives, updatedLives: updatedLives)
-                if updatedLives == 0 {
-                    runEndBeatToken += 1
-                    let beatToken = runEndBeatToken
-                    isGameOverTransitioning = true
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(280))
-                        guard beatToken == runEndBeatToken else { return }
-                        guard !isRestartingRun else { return }
-                        guard gameOverRunTotal == nil else { return }
-                        guard livesRemaining == 0 else {
-                            isGameOverTransitioning = false
-                            return
-                        }
-                        gameOverRunTotal = latestRunTotal
-                        isGameOverTransitioning = false
-                    }
-                }
+                handlePlayerHitSignal()
             }
             .onChange(of: playerHealSignal) { _, _ in
-                guard !isRestartingRun else { return }
-                let previousLives = livesRemaining
-                let updatedLives = min(4, previousLives + 1)
-                guard updatedLives > previousLives else { return }
-                livesRemaining = updatedLives
-                animateHeartRefill(refilledIndex: previousLives)
+                handlePlayerHealSignal()
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
@@ -246,9 +192,76 @@ struct GameView: View {
         .background(Color(red: 0.5, green: 0.78, blue: 0.95))
     }
 
+    @ViewBuilder
+    private func rideChangeOverlay(sceneHeight: CGFloat) -> some View {
+        if !gameplayOverlayOpen {
+            Button {
+                currentRide = currentRide.nextRide
+            } label: {
+                Text(nextRide.shortLabel)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .fill(Color.black.opacity(0.28))
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            }
+            .buttonStyle(GameControlPressStyle())
+            .accessibilityLabel("Change ride")
+            .accessibilityValue(nextRide.shortLabel)
+            .padding(.leading, 16)
+            .padding(.bottom, rideBottomPadding(sceneHeight: sceneHeight))
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: RideButtonHeightPreferenceKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            }
+        }
+    }
+
+    private func handlePlayerHitSignal() {
+        guard !isRestartingRun else { return }
+        guard gameOverRunTotal == nil else { return }
+        let updatedLives = livesRemaining
+        let previousLives = min(maxLives, updatedLives + 1)
+        animateHeartLoss(previousLives: previousLives, updatedLives: updatedLives)
+        guard updatedLives == 0 else { return }
+
+        let finalScore = totalCollected
+        runEndBeatToken += 1
+        let beatToken = runEndBeatToken
+        isGameOverTransitioning = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(280))
+            guard beatToken == runEndBeatToken else { return }
+            guard !isRestartingRun else { return }
+            guard gameOverRunTotal == nil else { return }
+            guard livesRemaining == 0 else {
+                isGameOverTransitioning = false
+                return
+            }
+            gameOverRunTotal = finalScore
+            isGameOverTransitioning = false
+        }
+    }
+
+    private func handlePlayerHealSignal() {
+        guard !isRestartingRun else { return }
+        let updatedLives = livesRemaining
+        let previousLives = max(0, updatedLives - 1)
+        guard updatedLives > previousLives else { return }
+        animateHeartRefill(refilledIndex: previousLives)
+    }
+
     private var heartsOverlay: some View {
         HStack(spacing: 3) {
-            ForEach(0..<4, id: \.self) { index in
+            ForEach(0..<maxLives, id: \.self) { index in
                 Image(index < livesRemaining ? "heart-full" : "heart-empty")
                     .resizable()
                     .scaledToFit()
@@ -360,10 +373,9 @@ struct GameView: View {
         // Reset hit signal while game over is still active so the onChange guard suppresses it.
         playerHitSignal = 0
         playerHealSignal = 0
-        latestRunTotal = 0
-        livesRemaining = 4
-        heartScales = Array(repeating: 1, count: 4)
-        heartOpacities = Array(repeating: 1, count: 4)
+        livesRemaining = maxLives
+        heartScales = Array(repeating: 1, count: maxLives)
+        heartOpacities = Array(repeating: 1, count: maxLives)
         heartsRowScale = 1
         heartsRowOpacity = 1
         purseBadgeScale = 1
@@ -471,13 +483,13 @@ private struct GameSKBridge: UIViewRepresentable {
     @Binding var lionCount: Int
     @Binding var elephantCount: Int
     @Binding var giraffeCount: Int
+    @Binding var livesRemaining: Int
     let gameplayPaused: Bool
     let appLifecyclePaused: Bool
     var purseCollectTargetInScene: CGPoint?
     @Binding var purseShakeSignal: Int
     @Binding var playerHitSignal: Int
     @Binding var playerHealSignal: Int
-    @Binding var latestRunTotal: Int
     @Binding var groundTopY: CGFloat?
 
     func makeUIView(context: Context) -> SKView {
@@ -491,16 +503,16 @@ private struct GameSKBridge: UIViewRepresentable {
         scene.bind(
             lion: $lionCount,
             elephant: $elephantCount,
-            giraffe: $giraffeCount
+            giraffe: $giraffeCount,
+            lives: $livesRemaining
         )
         let coordinator = context.coordinator
         coordinator.purseShakeBinding = $purseShakeSignal
         coordinator.hitSignalBinding = $playerHitSignal
         coordinator.healSignalBinding = $playerHealSignal
-        coordinator.latestRunTotalBinding = $latestRunTotal
         coordinator.groundTopBinding = $groundTopY
         scene.onPurseShakeRequested = Self.makePurseShakeHandler(coordinator: coordinator)
-        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator, scene: scene)
+        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator)
         scene.onPlayerHealed = Self.makePlayerHealHandler(coordinator: coordinator)
         scene.onGroundTopChanged = Self.makeGroundTopHandler(coordinator: coordinator)
         view.presentScene(scene)
@@ -517,10 +529,9 @@ private struct GameSKBridge: UIViewRepresentable {
         coordinator.purseShakeBinding = $purseShakeSignal
         coordinator.hitSignalBinding = $playerHitSignal
         coordinator.healSignalBinding = $playerHealSignal
-        coordinator.latestRunTotalBinding = $latestRunTotal
         coordinator.groundTopBinding = $groundTopY
         scene.onPurseShakeRequested = Self.makePurseShakeHandler(coordinator: coordinator)
-        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator, scene: scene)
+        scene.onPlayerHit = Self.makePlayerHitHandler(coordinator: coordinator)
         scene.onPlayerHealed = Self.makePlayerHealHandler(coordinator: coordinator)
         scene.onGroundTopChanged = Self.makeGroundTopHandler(coordinator: coordinator)
         scene.syncAppLifecyclePaused(appLifecyclePaused)
@@ -558,11 +569,10 @@ private struct GameSKBridge: UIViewRepresentable {
         }
     }
 
-    private static func makePlayerHitHandler(coordinator: Coordinator, scene: GameScene) -> () -> Void {
-        { [weak coordinator, weak scene] in
+    private static func makePlayerHitHandler(coordinator: Coordinator) -> () -> Void {
+        { [weak coordinator] in
             mutateOnMain {
                 coordinator?.hitSignalBinding?.wrappedValue += 1
-                coordinator?.latestRunTotalBinding?.wrappedValue = scene?.totalCollectedThisRun ?? 0
             }
         }
     }
@@ -589,7 +599,6 @@ private struct GameSKBridge: UIViewRepresentable {
         var purseShakeBinding: Binding<Int>?
         var hitSignalBinding: Binding<Int>?
         var healSignalBinding: Binding<Int>?
-        var latestRunTotalBinding: Binding<Int>?
         var groundTopBinding: Binding<CGFloat?>?
     }
 }

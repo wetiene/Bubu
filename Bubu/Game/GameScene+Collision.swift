@@ -9,7 +9,8 @@ extension GameScene {
     // MARK: - Collision / stumble
 
     func checkHeartPickupHits() {
-        guard estimatedLives < maxLives else { return }
+        guard !runEnded else { return }
+        guard lives < maxLives else { return }
         let p = playerHazardRect()
         for child in itemsLayer.children where child.name == "heartPickup" {
             let pickupRect = heartPickupRect(for: child)
@@ -21,6 +22,7 @@ extension GameScene {
     }
 
     func checkObstacleHits() {
+        guard !runEnded else { return }
         let p = playerHazardRect()
         for child in itemsLayer.children where child.name == "obstacle" {
             let o = forgivingObstacleRect(for: child)
@@ -110,17 +112,19 @@ extension GameScene {
     }
 
     func collectHeartPickup(_ pickup: SKNode) {
+        guard !runEnded else { return }
         guard pickup.parent != nil else { return }
         pickup.name = nil
         let worldPoint = itemsLayer.convert(pickup.position, to: self)
         pickup.removeFromParent()
         playHeartHealPickupFX(at: worldPoint)
-        estimatedLives = min(maxLives, estimatedLives + 1)
+        lives = min(maxLives, lives + 1)
+        syncLivesToUI()
         onPlayerHealed?()
     }
 
     func beginStumble() {
-        guard !isStumbling else { return }
+        guard !runEnded, !isStumbling else { return }
         showOopsBubble()
         onPurseShakeRequested?()
         let droppedKinds = dropAnimalsOnObstacleHit()
@@ -128,9 +132,13 @@ extension GameScene {
         for (i, k) in droppedKinds.prefix(visualCap).enumerated() {
             spawnDroppedAnimalFall(dropped: k, slot: i)
         }
-        onPlayerHit?()
-        estimatedLives = max(0, estimatedLives - 1)
+        lives = max(0, lives - 1)
         lastDamageSceneTime = sceneTime
+        if lives == 0 {
+            runEnded = true
+        }
+        syncLivesToUI()
+        onPlayerHit?()
         isStumbling = true
         stumbleElapsed = 0
         velocityY = -280

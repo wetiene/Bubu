@@ -95,6 +95,7 @@ extension GameScene {
     }
 
     func updateNormalCollisionsAndStateTransitions() {
+        guard !runEnded else { return }
         checkHeartPickupHits()
         if sceneTime >= invulnerableUntil {
             checkObstacleHits()
@@ -175,7 +176,7 @@ extension GameScene {
     }
 
     func canSpawnHeartPickup() -> Bool {
-        guard estimatedLives < maxLives else { return false }
+        guard lives < maxLives else { return false }
         guard heartPickupCount() == 0 else { return false }
         guard sceneTime >= heartSpawnCooldownUntil else { return false }
         return true
@@ -186,9 +187,9 @@ extension GameScene {
         if sceneTime - lastDamageSceneTime <= 7.5 {
             spawnChance += 0.16
         }
-        if estimatedLives <= 1 {
+        if lives <= 1 {
             spawnChance += 0.24
-        } else if estimatedLives == 2 {
+        } else if lives == 2 {
             spawnChance += 0.09
         }
         spawnChance = min(spawnChance, 0.72)

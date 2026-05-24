@@ -75,7 +75,9 @@ private struct StarPlacement {
     let yFrac: CGFloat
     let baseScale: CGFloat
     let textureName: String
+    let textureWidth: CGFloat
     let twinklePhase: CGFloat
+    let zRotation: CGFloat
 }
 
 private enum StarField {
@@ -91,6 +93,12 @@ private enum StarField {
     static let maxCandidateAttempts = 50
     static let moonYFrac: CGFloat = 0.78
     static let moonAvoidRadius: CGFloat = 0.12
+    static let peakAlpha: CGFloat = 0.75
+    static let twinkleMin: CGFloat = 0.92
+    static let twinkleMax: CGFloat = 1.00
+    static let rotationDegreesRange: ClosedRange<CGFloat> = -15...15
+    /// Screen-width fraction used for uniform on-screen star size (independent of texture pixel dimensions).
+    static let screenWidthScale: CGFloat = 0.04
 }
 
 /// Per-frame sky alphas (sum ≤ 1 during transitions); drives pre-baked gradient layers.
@@ -117,7 +125,7 @@ private struct SkyPhaseState {
 final class SkyEnvironmentController {
     enum Z {
         static let sky: CGFloat = -50
-        static let stars: CGFloat = -48
+        static let stars: CGFloat = -46
         static let moon: CGFloat = -47
         static let clouds: CGFloat = -45
         static let atmosphere: CGFloat = -44
@@ -136,6 +144,8 @@ final class SkyEnvironmentController {
     private var stars: [SKSpriteNode] = []
     private var starPlacements: [StarPlacement] = []
     private let starFieldSeed: UInt64
+    /// Night visibility scalar for all stars (updated each frame; avoids per-star userData alpha reads).
+    private var starNightVisibility: CGFloat = 0
 
     private var elapsed: TimeInterval = 0
     private let moonOnLeft: Bool
@@ -209,6 +219,7 @@ final class SkyEnvironmentController {
         clouds = []
         stars = []
         starPlacements = []
+        starNightVisibility = 0
     }
 
     func relayout() {
@@ -233,6 +244,7 @@ final class SkyEnvironmentController {
         lastPaletteDebugKey = nil
         #endif
         applyVisuals(state: phaseState(at: elapsed))
+        twinkleStars()
     }
 
     func update(deltaTime dt: TimeInterval) {
@@ -434,7 +446,7 @@ final class SkyEnvironmentController {
     private func updateCloudsAppearance(state: SkyPhaseState) {
         let alpha = SkyMath.lerp(
             SkyMath.lerp(0.92, 0.9, state.sunsetInfluence),
-            0.28,
+            0.44,
             state.nightInfluence
         )
         let tintDay = SKColor(white: 1, alpha: 1)
@@ -549,13 +561,19 @@ final class SkyEnvironmentController {
 
             guard let textureName = rng.pick(textures) else { continue }
 
+            let tex = GameTextures.named(textureName)
+            let textureWidth = max(tex.size().width, 1)
+            let rotationDegrees = rng.nextCGFloat(in: StarField.rotationDegreesRange)
+
             placements.append(
                 StarPlacement(
                     xFrac: xFrac,
                     yFrac: yFrac,
                     baseScale: baseScale,
                     textureName: textureName,
-                    twinklePhase: rng.nextCGFloat(in: 0...StarField.twinklePhaseMax)
+                    textureWidth: textureWidth,
+                    twinklePhase: rng.nextCGFloat(in: 0...StarField.twinklePhaseMax),
+                    zRotation: rotationDegrees * (.pi / 180)
                 )
             )
         }
@@ -570,14 +588,16 @@ final class SkyEnvironmentController {
         }
 
         for p in starPlacements {
-            let star = SKSpriteNode(imageNamed: p.textureName)
+            let star = SKSpriteNode(texture: GameTextures.named(p.textureName))
             star.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            star.zRotation = p.zRotation
             star.alpha = 0
             star.userData = NSMutableDictionary()
-            star.userData?["xFrac"] = p.xFrac
-            star.userData?["yFrac"] = p.yFrac
-            star.userData?["baseScale"] = p.baseScale
-            star.userData?["twinklePhase"] = p.twinklePhase
+            star.userData?["xFrac"] = NSNumber(value: Double(p.xFrac))
+            star.userData?["yFrac"] = NSNumber(value: Double(p.yFrac))
+            star.userData?["baseScale"] = NSNumber(value: Double(p.baseScale))
+            star.userData?["textureWidth"] = NSNumber(value: Double(p.textureWidth))
+            star.userData?["twinklePhase"] = NSNumber(value: Double(p.twinklePhase))
             starsContainer.addChild(star)
             stars.append(star)
         }
@@ -585,22 +605,29 @@ final class SkyEnvironmentController {
 
     private func layoutStars(screen: CGSize) {
         for star in stars {
-            let xFrac = star.userData?["xFrac"] as? CGFloat ?? 0.5
-            let yFrac = star.userData?["yFrac"] as? CGFloat ?? 0.9
-            let baseScale = star.userData?["baseScale"] as? CGFloat ?? 0.95
-            if let tex = star.texture, tex.size().width > 0.5 {
-                star.setScale((screen.width * 0.04 * baseScale) / tex.size().width)
-            }
+            let xFrac = userDataCGFloat(star.userData, key: "xFrac") ?? 0.5
+            let yFrac = userDataCGFloat(star.userData, key: "yFrac") ?? 0.9
+            let baseScale = userDataCGFloat(star.userData, key: "baseScale") ?? 0.95
+            let textureWidth = userDataCGFloat(star.userData, key: "textureWidth") ?? 1
+            let targetWidth = screen.width * StarField.screenWidthScale * baseScale
+            star.setScale(targetWidth / textureWidth)
             star.position = CGPoint(x: screen.width * xFrac, y: screen.height * yFrac)
         }
     }
 
     private func twinkleStars() {
+        guard starNightVisibility > 0.001 else {
+            for star in stars where star.alpha > 0.001 {
+                star.alpha = 0
+            }
+            return
+        }
+
+        let twinkleSpan = StarField.twinkleMax - StarField.twinkleMin
         for star in stars {
-            let phase = star.userData?["twinklePhase"] as? CGFloat ?? 0
-            let base = star.userData?["displayAlpha"] as? CGFloat ?? 0
-            let twinkle = 0.90 + 0.10 * sin(elapsed * 1.4 + Double(phase))
-            star.alpha = base * CGFloat(twinkle)
+            let phase = userDataCGFloat(star.userData, key: "twinklePhase") ?? 0
+            let shimmer = StarField.twinkleMin + twinkleSpan * (0.5 + 0.5 * sin(elapsed * 1.4 + Double(phase)))
+            star.alpha = starNightVisibility * shimmer
         }
     }
 
@@ -616,10 +643,7 @@ final class SkyEnvironmentController {
     }
 
     private func updateStarsAndMoon(state: SkyPhaseState) {
-        let starBase = starVisibility(state: state) * 0.75
-        for star in stars {
-            star.userData?["displayAlpha"] = starBase
-        }
+        starNightVisibility = starVisibility(state: state) * StarField.peakAlpha
 
         guard let moon else { return }
         let moonRise = SkyMath.smoothstep(
@@ -629,6 +653,17 @@ final class SkyEnvironmentController {
             SkyMath.clamp((state.dayInfluence - 0.72) / 0.28, min: 0, max: 1)
         )
         moon.alpha = moonRise * fadeBeforeDay * 0.92
+    }
+
+    private func userDataCGFloat(_ userData: NSMutableDictionary?, key: String) -> CGFloat? {
+        guard let value = userData?[key] else { return nil }
+        if let number = value as? NSNumber {
+            return CGFloat(truncating: number)
+        }
+        if let cg = value as? CGFloat {
+            return cg
+        }
+        return nil
     }
 }
 
