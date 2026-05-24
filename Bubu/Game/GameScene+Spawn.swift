@@ -155,8 +155,8 @@ extension GameScene {
         root.addChild(sprite)
 
         let halo = SKShapeNode(circleOfRadius: 15)
-        halo.fillColor = SKColor(red: 1.0, green: 0.56, blue: 0.75, alpha: 0.18)
-        halo.strokeColor = SKColor(red: 1.0, green: 0.8, blue: 0.9, alpha: 0.45)
+        halo.fillColor = SKColor(red: 1.0, green: 0.56, blue: 0.75, alpha: 0)
+        halo.strokeColor = SKColor(red: 1.0, green: 0.8, blue: 0.9, alpha: 0)
         halo.lineWidth = 1.3
         halo.zPosition = -1
         root.addChild(halo)
