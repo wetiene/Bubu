@@ -41,7 +41,7 @@ struct HomeView: View {
                 .padding(.horizontal, 40)
 
                 Button(action: onAchievements) {
-                    Text("Achievements")
+                    Text("Sticker Book")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -52,7 +52,7 @@ struct HomeView: View {
                         )
                         .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
                 }
-                .accessibilityLabel("Achievements")
+                .accessibilityLabel("Sticker Book")
                 .padding(.horizontal, 40)
 
                 Toggle(isOn: $musicEnabled) {
