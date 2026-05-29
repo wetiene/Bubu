@@ -24,10 +24,24 @@ extension GameScene {
         playerRoot.removeAction(forKey: "jumpJuice")
         playerRoot.removeAction(forKey: "landJuice")
         stopBubuRunAnimation(holdAirborneFrame: false)
+        stopBubuBikeAnimation(holdAirborneFrame: false)
+        stopBubuScooterAnimation(holdAirborneFrame: false)
 
         if ride == .run, let first = bubuRunTextures?.first {
             applyPlayerDisplayScale(for: ride)
             applyRunFrameTexture(first)
+            return
+        }
+
+        if ride == .bike, let first = bubuBikeTextures?.first {
+            applyPlayerDisplayScale(for: ride)
+            applyBikeFrameTexture(first)
+            return
+        }
+
+        if ride == .scooter, let first = bubuScooterTextures?.first {
+            applyPlayerDisplayScale(for: ride)
+            applyScooterFrameTexture(first)
             return
         }
 
@@ -53,7 +67,11 @@ extension GameScene {
         playerUniformBaseScale = 1
         activeRideVisual = .run
         playerRunLockedDisplaySize = nil
+        playerBikeLockedDisplaySize = nil
+        playerScooterLockedDisplaySize = nil
         bubuRunTextures = loadBubuRunTextures()
+        bubuBikeTextures = loadBubuBikeTextures()
+        bubuScooterTextures = loadBubuScooterTextures()
         jumpsRemaining = maxJumpCount
         lives = maxLives
         runEnded = false
@@ -115,9 +133,9 @@ extension GameScene {
     func rideVisualDisplaySize(for ride: RideType) -> CGSize {
         switch ride {
         case .run:
-            return CGSize(width: 83, height: 128)
+            return CGSize(width: 100, height: 118)
         case .bike:
-            return CGSize(width: 117, height: 124)
+            return CGSize(width: 100, height: 118)
         case .scooter:
             return CGSize(width: 105, height: 122)
         case .skate:

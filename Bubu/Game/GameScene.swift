@@ -155,13 +155,30 @@ final class GameScene: SKScene {
     var playerUniformBaseScale: CGFloat = 1
     var activeRideVisual: RideType = .run
     var bubuRunTextures: [SKTexture]?
+    var bubuBikeTextures: [SKTexture]?
+    var bubuScooterTextures: [SKTexture]?
     static let bubuRunAnimationKey = "bubuRunAnimation"
+    static let bubuBikeAnimationKey = "bubuBikeAnimation"
+    static let bubuScooterAnimationKey = "bubuScooterAnimation"
     static let bubuRunFrameNames = ["bubu-run-1", "bubu-run-2", "bubu-run-3", "bubu-run-4", "bubu-run-5", "bubu-run-6" ,"bubu-run-7" ,"bubu-run-8" ,"bubu-run-9" ,"bubu-run-10" ,"bubu-run-11"]
     static let bubuRunAirborneFrameName = "bubu-run-3"
     static let bubuRunMinFrameCount = 11
     /// Per-frame duration for the 3-step run cycle (playful, not frantic).
     static let bubuRunTimePerFrame: TimeInterval = 0.09
     var playerRunLockedDisplaySize: CGSize?
+    var playerBikeLockedDisplaySize: CGSize?
+    var playerScooterLockedDisplaySize: CGSize?
+    static let bubuScooterExpectedFrameCount = 8
+    static let bubuScooterMinFrameCount = 2
+    static let bubuScooterAirborneFrameName = "bubu-scooter-3"
+    /// Slightly slower than 8-frame rides (catalog currently has 5 scooter frames).
+    static let bubuScooterTimePerFrame: TimeInterval = 0.12
+    static let bubuBikeFrameNames = [
+        "bubu-bike-1", "bubu-bike-2", "bubu-bike-3", "bubu-bike-4",
+        "bubu-bike-5", "bubu-bike-6", "bubu-bike-7" ,"bubu-bike-8" 
+    ]
+    static let bubuBikeAirborneFrameName = "bubu-bike-3"
+    static let bubuBikeTimePerFrame: TimeInterval = 0.13
     var jumpJuiceWasInAir = false
     let maxLives = 4
     /// Authoritative run lives; mirrored to SwiftUI via `livesBinding`.

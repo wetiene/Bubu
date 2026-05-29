@@ -125,10 +125,14 @@ extension GameScene {
         } else {
             updateNormalMovement(step: step)
             updatePlayerRunAnimationState()
+            updatePlayerBikeAnimationState()
+            updatePlayerScooterAnimationState()
         }
 
         if wasStumbling {
             stopBubuRunAnimation(holdAirborneFrame: false)
+            stopBubuBikeAnimation(holdAirborneFrame: false)
+            stopBubuScooterAnimation(holdAirborneFrame: false)
         }
 
         // Shared world movement/scrolling.

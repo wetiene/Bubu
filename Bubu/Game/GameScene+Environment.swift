@@ -10,14 +10,14 @@ import UIKit
 
 enum SkyEnvironmentTiming {
     /// Full day → sunset → night → day loop (~6 minutes by default).
-    static let cycleDuration: TimeInterval = 40
+    static let cycleDuration: TimeInterval = 160
 
-    static let dayHoldDuration: TimeInterval = 10
-    static let dayToSunsetDuration: TimeInterval = 5
-    static let sunsetHoldDuration: TimeInterval = 5
-    static let sunsetToNightDuration: TimeInterval = 5
-    static let nightHoldDuration: TimeInterval = 10
-    static let nightToDayDuration: TimeInterval = 5
+    static let dayHoldDuration: TimeInterval = 40
+    static let dayToSunsetDuration: TimeInterval = 20
+    static let sunsetHoldDuration: TimeInterval = 20
+    static let sunsetToNightDuration: TimeInterval = 20
+    static let nightHoldDuration: TimeInterval = 40
+    static let nightToDayDuration: TimeInterval = 20
 
     static var segmentDurations: [TimeInterval] {
         [

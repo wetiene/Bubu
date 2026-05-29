@@ -145,6 +145,8 @@ extension GameScene {
         playerRoot.removeAction(forKey: "jumpJuice")
         playerRoot.removeAction(forKey: "landJuice")
         stopBubuRunAnimation(holdAirborneFrame: false)
+        stopBubuBikeAnimation(holdAirborneFrame: false)
+        stopBubuScooterAnimation(holdAirborneFrame: false)
         restorePlayerUniformScale()
         playHitShake()
     }
