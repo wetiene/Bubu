@@ -144,6 +144,7 @@ extension GameScene {
         velocityY = -280
         playerRoot.removeAction(forKey: "jumpJuice")
         playerRoot.removeAction(forKey: "landJuice")
+        stopBubuRunAnimation(holdAirborneFrame: false)
         restorePlayerUniformScale()
         playHitShake()
     }

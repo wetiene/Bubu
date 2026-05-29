@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "Bubu.png",
+      "filename" : "Bubu.jpg",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "Bubu 1.png",
+      "filename" : "Bubu 1.jpg",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -25,7 +25,7 @@
           "value" : "tinted"
         }
       ],
-      "filename" : "Bubu 2.png",
+      "filename" : "Bubu 2.jpg",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

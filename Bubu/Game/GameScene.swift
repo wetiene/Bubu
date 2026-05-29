@@ -153,6 +153,15 @@ final class GameScene: SKScene {
     let playerHazardLiftFromFeet: CGFloat = 10
 
     var playerUniformBaseScale: CGFloat = 1
+    var activeRideVisual: RideType = .run
+    var bubuRunTextures: [SKTexture]?
+    static let bubuRunAnimationKey = "bubuRunAnimation"
+    static let bubuRunFrameNames = ["bubu-run-1", "bubu-run-2", "bubu-run-3", "bubu-run-4", "bubu-run-5", "bubu-run-6" ,"bubu-run-7" ,"bubu-run-8" ,"bubu-run-9" ,"bubu-run-10" ,"bubu-run-11"]
+    static let bubuRunAirborneFrameName = "bubu-run-3"
+    static let bubuRunMinFrameCount = 11
+    /// Per-frame duration for the 3-step run cycle (playful, not frantic).
+    static let bubuRunTimePerFrame: TimeInterval = 0.09
+    var playerRunLockedDisplaySize: CGSize?
     var jumpJuiceWasInAir = false
     let maxLives = 4
     /// Authoritative run lives; mirrored to SwiftUI via `livesBinding`.

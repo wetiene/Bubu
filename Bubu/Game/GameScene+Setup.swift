@@ -20,18 +20,20 @@ extension GameScene {
 
     /// Visual-only; `currentRide` lives in SwiftUI — call this when the binding changes.
     func applyRideVisual(_ ride: RideType) {
+        activeRideVisual = ride
         playerRoot.removeAction(forKey: "jumpJuice")
         playerRoot.removeAction(forKey: "landJuice")
-        let name = resolvedAssetName(for: ride)
-        playerRoot.texture = GameTextures.named(name)
-        let th = targetHeight(for: ride)
-        let h = playerRoot.texture?.size().height ?? 0
-        if h > 0.5 {
-            playerRoot.setScale(th / h)
-        } else {
-            playerRoot.setScale(0.32)
+        stopBubuRunAnimation(holdAirborneFrame: false)
+
+        if ride == .run, let first = bubuRunTextures?.first {
+            applyPlayerDisplayScale(for: ride)
+            applyRunFrameTexture(first)
+            return
         }
-        playerUniformBaseScale = playerRoot.xScale
+
+        applyPlayerDisplayScale(for: ride)
+        playerRoot.texture = GameTextures.named(resolvedAssetName(for: ride))
+        applyRideLockedDisplaySize(for: ride)
     }
 
     override func didMove(to view: SKView) {
@@ -49,6 +51,9 @@ extension GameScene {
         velocityY = 0
         jumpJuiceWasInAir = false
         playerUniformBaseScale = 1
+        activeRideVisual = .run
+        playerRunLockedDisplaySize = nil
+        bubuRunTextures = loadBubuRunTextures()
         jumpsRemaining = maxJumpCount
         lives = maxLives
         runEnded = false
@@ -64,6 +69,7 @@ extension GameScene {
         playerRoot.position = CGPoint(x: 140, y: groundHeight)
         playerRoot.zRotation = 0
         addChild(playerRoot)
+        applyPlayerDisplayScale(for: .run)
 
         applyDeferredSwiftUIReset()
 
@@ -102,12 +108,28 @@ extension GameScene {
     // MARK: - Bubu (sprite) & rides
 
     func targetHeight(for ride: RideType) -> CGFloat {
+        rideVisualDisplaySize(for: ride).height
+    }
+
+    /// On-screen ride size in points (not PNG pixels). Keeps rides consistent regardless of texture bounds.
+    func rideVisualDisplaySize(for ride: RideType) -> CGSize {
         switch ride {
-        case .run: return 128
-        case .bike: return 124
-        case .scooter: return 126
-        case .skate: return 126
+        case .run:
+            return CGSize(width: 83, height: 128)
+        case .bike:
+            return CGSize(width: 117, height: 124)
+        case .scooter:
+            return CGSize(width: 105, height: 122)
+        case .skate:
+            return CGSize(width: 94, height: 108)
         }
+    }
+
+    func applyRideLockedDisplaySize(for ride: RideType) {
+        let display = rideVisualDisplaySize(for: ride)
+        playerRoot.size = display
+        playerRoot.setScale(1)
+        playerUniformBaseScale = 1
     }
 
     /// Uses catalog image when present; otherwise falls back so the game never crashes on a missing asset.
@@ -132,8 +154,13 @@ extension GameScene {
     }
 
     func makePlayerSprite() -> SKSpriteNode {
-        let name = resolvedAssetName(for: .run)
-        let sprite = SKSpriteNode(texture: GameTextures.named(name))
+        let texture: SKTexture
+        if let first = bubuRunTextures?.first {
+            texture = first
+        } else {
+            texture = GameTextures.named(resolvedAssetName(for: .run))
+        }
+        let sprite = SKSpriteNode(texture: texture)
         sprite.name = "player"
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0)
         return sprite

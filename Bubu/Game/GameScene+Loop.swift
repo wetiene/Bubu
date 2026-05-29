@@ -124,6 +124,11 @@ extension GameScene {
             updateStumble(step: step, dt: dt)
         } else {
             updateNormalMovement(step: step)
+            updatePlayerRunAnimationState()
+        }
+
+        if wasStumbling {
+            stopBubuRunAnimation(holdAirborneFrame: false)
         }
 
         // Shared world movement/scrolling.
